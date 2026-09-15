@@ -10,7 +10,7 @@ the two disagree.
 
 ## What it does
 
-1. Ingests **NBA team/game stats** ([balldontlie.io](https://www.balldontlie.io/) API)
+1. Ingests **NBA team/game stats** (stats.nba.com via [`nba_api`](https://github.com/swar/nba_api), no key needed)
    and **live NBA odds** ([The Odds API](https://the-odds-api.com/)) into Elasticsearch.
 2. Computes a **stats-based win probability** per team per upcoming game using a
    documented, transparent scoring formula (see [docs/model.md](docs/model.md)) —
@@ -37,7 +37,8 @@ the two disagree.
 ## Repo layout
 
 ```
-ingest/          Python scripts that pull from balldontlie.io + The Odds API and bulk-index into Elasticsearch
+ingest/          Python scripts that pull from stats.nba.com + The Odds API and bulk-index into Elasticsearch
+                 (indices.py holds the index definitions; refresh_all.sh re-runs everything)
 mappings/        Explicit index mapping definitions (PUT ready, paste into Dev Tools)
 esql/            The win-probability formula and stats-vs-odds comparison queries
 agent_builder/   Tool + agent definitions (Dev Tools Console JSON, paste-and-run)
@@ -46,12 +47,13 @@ docs/            SOW, model explanation, demo script
 
 ## Setup
 
-### 1. Elastic Cloud Serverless
+### 1. Elastic Cloud
 
-Sign up for a free trial project: https://www.elastic.co/cloud/cloud-trial-overview
+Sign up for a free trial: https://www.elastic.co/cloud/cloud-trial-overview
+(Cloud Hosted or Serverless both work — our shared deployment is Cloud Hosted 9.5).
 
-Grab your **Elasticsearch endpoint** and **API key** from your project's Connection
-Details page.
+Grab your **Elasticsearch endpoint** and **API key** from the Connection Details
+page.
 
 ### 2. The Odds API key
 
@@ -72,33 +74,33 @@ cp .env.example .env
 ### 4. Install dependencies
 
 ```bash
-pip install -r ingest/requirements.txt
+python3 -m venv .venv
+.venv/bin/pip install -r ingest/requirements.txt
 ```
 
-### 5. Create indices
-
-Paste each file in [mappings/](mappings/) into Kibana's **Dev Tools Console**
-(hamburger menu → Management → Dev Tools) and run it. This creates
-`nba_team_stats`, `nba_games`, and `nba_odds` with explicit field types.
-
-### 6. Run ingestion
+### 5. Create indices and run ingestion
 
 ```bash
-python ingest/fetch_nba_stats.py
-python ingest/fetch_nba_games.py
-python ingest/fetch_odds.py
+./ingest/refresh_all.sh
 ```
 
-Re-run any of these to refresh — each script recreates its index so there are no
-duplicates.
+This creates the three indices if missing (`python ingest/indices.py`), then runs,
+in order: `fetch_nba_games.py` → `fetch_nba_stats.py` (aggregates team stats from
+`nba_games`) → `fetch_odds.py`, and prints doc counts. Re-run it close to demo
+time to refresh; each script clears its index's docs but keeps the mapping.
 
-### 7. Build the Agent Builder tools + agent
+Each index is a versioned index behind an alias (`nba_team_stats_v1` →
+`nba_team_stats`); all queries use the alias. `nba_team_stats` is a
+`lookup`-mode index so `LOOKUP JOIN` works. The same definitions are in
+[mappings/](mappings/) if you'd rather paste them into Dev Tools.
 
-In your Elastic Serverless project, go to **Agents**. Paste the five blocks in
+### 6. Build the Agent Builder tools + agent
+
+In Kibana, go to **Agents**. Paste the five blocks in
 [agent_builder/setup.md](agent_builder/setup.md) (four tools + one agent) into
 Dev Tools Console, or follow the manual walkthrough in the same file.
 
-### 8. Chat with it
+### 7. Chat with it
 
 Open **Kibana → Agents → NationalBettingAssociation Analyst** and try:
 
@@ -125,4 +127,4 @@ Which teams are playing lockdown defense and on a hot streak right now?
 
 - No trained ML classifier — the "model" is a transparent, documented formula.
 - No real-money betting integration of any kind.
-- No custom embedding model — semantic search uses the EIS default model via `semantic_text`.
+- No custom embedding model — semantic search uses ELSER on EIS (`.elser-2-elastic`) via `semantic_text`.

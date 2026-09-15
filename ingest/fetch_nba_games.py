@@ -1,83 +1,80 @@
-"""Fetch NBA games (scheduled + completed) from balldontlie.io and index them
-into `nba_games`.
+"""Fetch completed NBA regular-season games from stats.nba.com (via the
+`nba_api` package) and index them into `nba_games`.
 
-balldontlie.io docs: https://docs.balldontlie.io/
+balldontlie.io was the original source, but it now requires an API key for
+every endpoint. stats.nba.com is free and returns team-level game logs
+directly, which is also what fetch_nba_stats.py aggregates from.
 
 Run:
     python ingest/fetch_nba_games.py
 """
 import sys
 
-import requests
 from elasticsearch import helpers
+from nba_api.stats.endpoints import leaguegamelog
 
 from es_client import get_client
+from indices import reset_index
+from teams import canonical_team
 
 INDEX = "nba_games"
 SEASON = "2025-26"
-SEASON_YEAR = 2025  # balldontlie's `seasons` param takes the starting year
-BASE_URL = "https://api.balldontlie.io/v1"
 
 
-def fetch_games(season_year: int) -> list[dict]:
-    games = []
-    page_cursor = None
-    while True:
-        params = {"seasons[]": season_year, "per_page": 100}
-        if page_cursor:
-            params["cursor"] = page_cursor
-        resp = requests.get(f"{BASE_URL}/games", params=params, timeout=30)
-        resp.raise_for_status()
-        payload = resp.json()
-        games.extend(payload["data"])
-        page_cursor = payload.get("meta", {}).get("next_cursor")
-        if not page_cursor:
-            break
-    return games
+def fetch_team_game_log(season: str) -> list[dict]:
+    """One row per team per game (so two rows per game)."""
+    log = leaguegamelog.LeagueGameLog(
+        season=season,
+        season_type_all_star="Regular Season",
+        player_or_team_abbreviation="T",
+        timeout=60,
+    )
+    return log.get_normalized_dict()["LeagueGameLog"]
 
 
-def to_record(g: dict) -> dict:
-    home_score = g.get("home_team_score") or None
-    away_score = g.get("visitor_team_score") or None
-    status = "final" if g.get("status") == "Final" else "scheduled"
+def to_records(rows: list[dict]) -> list[dict]:
+    by_game: dict[str, list[dict]] = {}
+    for row in rows:
+        by_game.setdefault(row["GAME_ID"], []).append(row)
 
-    winner = None
-    if status == "final" and home_score is not None and away_score is not None:
-        if home_score > away_score:
-            winner = g["home_team"]["full_name"]
-        elif away_score > home_score:
-            winner = g["visitor_team"]["full_name"]
-        else:
-            winner = "draw"  # not possible in NBA, but kept for schema symmetry
-
-    return {
-        "game_id": str(g["id"]),
-        "date": g["date"],
-        "season": SEASON,
-        "home_team": g["home_team"]["full_name"],
-        "away_team": g["visitor_team"]["full_name"],
-        "home_score": home_score,
-        "away_score": away_score,
-        "status": status,
-        "winner": winner,
-    }
+    records = []
+    for game_id, pair in by_game.items():
+        if len(pair) != 2:
+            continue
+        # MATCHUP is "BOS vs. NYK" for the home team, "NYK @ BOS" for away.
+        # Neutral-site games (international, NBA Cup knockouts) list BOTH
+        # teams with "@"; treat the first row's opponent as the home team.
+        home = next((r for r in pair if " vs. " in r["MATCHUP"]), None)
+        if home is None:
+            home = pair[1]
+        away = pair[0] if home is pair[1] else pair[1]
+        home_team = canonical_team(home["TEAM_NAME"])
+        away_team = canonical_team(away["TEAM_NAME"])
+        records.append(
+            {
+                "game_id": game_id,
+                "date": home["GAME_DATE"],
+                "season": SEASON,
+                "home_team": home_team,
+                "away_team": away_team,
+                "home_score": home["PTS"],
+                "away_score": away["PTS"],
+                "status": "final",
+                "winner": home_team if home["WL"] == "W" else away_team,
+            }
+        )
+    return records
 
 
 def main():
     es = get_client()
 
-    print(f"Fetching NBA games for season {SEASON_YEAR} from balldontlie.io ...")
-    games = fetch_games(SEASON_YEAR)
-    print(f"  {len(games)} games found")
+    print(f"Fetching {SEASON} NBA games from stats.nba.com ...")
+    rows = fetch_team_game_log(SEASON)
+    records = to_records(rows)
+    print(f"  {len(records)} games found")
 
-    records = [to_record(g) for g in games]
-
-    if es.indices.exists(index=INDEX):
-        es.indices.delete(index=INDEX)
-        print(f"Deleted existing index '{INDEX}'")
-    # NOTE: run mappings/nba_games.json in Dev Tools BEFORE this script for
-    # the explicit mapping.
-
+    reset_index(es, INDEX)
     actions = [{"_index": INDEX, "_id": r["game_id"], "_source": r} for r in records]
     success, errors = helpers.bulk(es, actions)
     es.indices.refresh(index=INDEX)

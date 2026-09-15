@@ -1,6 +1,14 @@
-// Paste into Kibana Dev Tools Console and run.
-PUT nba_team_stats
+// Paste into Kibana Dev Tools Console and run -- or just run
+// `python ingest/indices.py`, which creates all three indices from the same
+// definitions (ingest/indices.py is the source of truth; keep these in sync).
+PUT nba_team_stats_v1
 {
+  "settings": {
+    "index.mode": "lookup"
+  },
+  "aliases": {
+    "nba_team_stats": { "is_write_index": true }
+  },
   "mappings": {
     "properties": {
       "team_id":                  { "type": "keyword" },
@@ -18,16 +26,24 @@ PUT nba_team_stats
       "last_10_wins":             { "type": "integer" },
       "last_10_losses":           { "type": "integer" },
       "last_updated":             { "type": "date" },
-      "narrative":                { "type": "semantic_text" }
+      "narrative":                { "type": "semantic_text", "inference_id": ".elser-2-elastic" }
     }
   }
 }
 
+// Versioned index + alias: everything queries `nba_team_stats` (the alias), so
+// a future mapping change is a new nba_team_stats_v2 + alias swap instead of
+// breaking queries.
+//
+// `index.mode: lookup` is required for `LOOKUP JOIN nba_team_stats ON team`
+// (the find_value_mismatches tool) and cannot be changed after creation.
+//
 // `narrative` is a short auto-generated blurb describing the team's current
-// play style/form (e.g. "elite defense, cold shooting on the road"). Elastic
-// Serverless auto-embeds semantic_text fields with the deployment's default
-// EIS model at index time -- no model setup needed. This is what powers
-// vector/semantic search: querying `narrative` with natural language finds
-// teams by playstyle/form even when the query doesn't share exact keywords
-// with the blurb. See esql/team_narrative_search.esql and the
-// find_similar_teams tool in agent_builder/setup.md.
+// play style/form (e.g. "lockdown defense, ice cold down the stretch"). It's
+// embedded at index time by ELSER running on the Elastic Inference Service
+// (`.elser-2-elastic`) -- no ML nodes needed. The inference endpoint is pinned
+// because the semantic_text default differs between Serverless and Cloud
+// Hosted. This powers semantic search: querying `narrative` with natural
+// language finds teams by play style even without shared keywords. See
+// esql/team_narrative_search.esql and find_similar_teams in
+// agent_builder/setup.md.

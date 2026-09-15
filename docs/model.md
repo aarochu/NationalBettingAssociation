@@ -11,7 +11,7 @@ moment than a black box.
 
 | Field | What it captures |
 |---|---|
-| `net_rating` | Points scored minus points allowed per 100 possessions (or a simplified per-game version) — the single best proxy for "how good is this team right now." |
+| `net_rating` | Points scored minus points allowed **per game** (the simplified version of the per-100-possessions stat; `nba_games` doesn't store possessions, and at ~100 possessions/game the two are within about a point) — the single best proxy for "how good is this team right now." Currently spans +11.1 (OKC) to −12.0 (WAS). |
 | `last_10_wins` / `last_10_losses` | Recent form — weights recency over full-season record, since injuries/trades/momentum matter. |
 | `home_win_pct` / `away_win_pct` | Home-court advantage, applied as a flat bonus rather than its own weighted term for simplicity. |
 
@@ -71,9 +71,9 @@ too few results in the demo.
 
 Alongside the numeric formula, each team gets a short auto-generated
 `narrative` blurb (e.g. "elite two-way team on a hot streak, dominant at
-home") stored in a `semantic_text` field. Elastic Serverless automatically
-embeds this text with the deployment's default EIS model at index time — no
-model deployment, no API keys.
+home") stored in a `semantic_text` field. Elasticsearch automatically
+embeds this text at index time with ELSER running on EIS
+(`.elser-2-elastic`) — no model deployment, no API keys.
 
 This powers the `find_similar_teams` tool: a query like *"which teams are
 playing lockdown defense and on a hot streak"* matches teams by the
@@ -83,9 +83,11 @@ answers "how good is this team, numerically," the semantic search answers
 "which teams match this vibe/description."
 
 Narratives are generated from a simple template over the same stats used in
-the formula (see `build_narrative()` in
+the formula (see `build_narratives()` in
 [ingest/fetch_nba_stats.py](../ingest/fetch_nba_stats.py)) — not an LLM call,
-to keep ingestion fast and free. A stretch goal is generating richer,
+to keep ingestion fast and free. Buckets are league-relative ranks (top/bottom
+~20% for offense and defense, net-rating tiers) rather than fixed thresholds,
+so every team gets a distinct blurb. A stretch goal is generating richer,
 less-templated blurbs with an EIS chat completion call instead.
 
 ## Explicit disclaimer

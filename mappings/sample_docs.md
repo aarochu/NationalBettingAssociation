@@ -5,13 +5,19 @@ Paste these into Dev Tools Console to have working data in all three indices
 ES|QL queries or Agent Builder tools work against a real, populated index
 without waiting on the other person's ingestion code.
 
-Run [nba_team_stats.json](nba_team_stats.json), [nba_games.json](nba_games.json),
-and [nba_odds.json](nba_odds.json) first to create the indices, then run these.
+Create the indices first (`python ingest/indices.py`, or paste
+[nba_team_stats.json](nba_team_stats.json), [nba_games.json](nba_games.json),
+and [nba_odds.json](nba_odds.json) into Dev Tools), then run these.
+
+Each doc uses a fixed `_id` (the stats docs use the same `BOS`/`NYK` ids the
+live ingest uses), so running these again overwrites instead of adding a
+duplicate Celtics row that would double-count in `LOOKUP JOIN`. Note that
+re-running the ingest scripts clears these sample docs.
 
 ## nba_team_stats
 
 ```
-POST nba_team_stats/_doc
+PUT nba_team_stats/_doc/BOS
 {
   "team_id": "BOS",
   "team": "Boston Celtics",
@@ -33,7 +39,7 @@ POST nba_team_stats/_doc
 ```
 
 ```
-POST nba_team_stats/_doc
+PUT nba_team_stats/_doc/NYK
 {
   "team_id": "NYK",
   "team": "New York Knicks",
@@ -57,7 +63,7 @@ POST nba_team_stats/_doc
 ## nba_games
 
 ```
-POST nba_games/_doc
+PUT nba_games/_doc/2026-09-20-BOS-NYK
 {
   "game_id": "2026-09-20-BOS-NYK",
   "date": "2026-09-20",
@@ -74,7 +80,7 @@ POST nba_games/_doc
 ## nba_odds
 
 ```
-POST nba_odds/_doc
+PUT nba_odds/_doc/sample-BOS-NYK-draftkings-BOS
 {
   "game_id": "2026-09-20-BOS-NYK",
   "date": "2026-09-20",
@@ -84,13 +90,13 @@ POST nba_odds/_doc
   "market": "h2h",
   "team": "Boston Celtics",
   "odds_decimal": 1.57,
-  "implied_probability": 0.637,
+  "implied_probability": 0.6095,
   "fetched_at": "2026-09-14T20:00:00"
 }
 ```
 
 ```
-POST nba_odds/_doc
+PUT nba_odds/_doc/sample-BOS-NYK-draftkings-NYK
 {
   "game_id": "2026-09-20-BOS-NYK",
   "date": "2026-09-20",
@@ -100,7 +106,7 @@ POST nba_odds/_doc
   "market": "h2h",
   "team": "New York Knicks",
   "odds_decimal": 2.45,
-  "implied_probability": 0.408,
+  "implied_probability": 0.3905,
   "fetched_at": "2026-09-14T20:00:00"
 }
 ```

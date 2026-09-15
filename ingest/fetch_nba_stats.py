@@ -1,135 +1,190 @@
-"""Fetch current-season NBA team stats from balldontlie.io and index them into
-`nba_team_stats`.
+"""Derive per-team 2025-26 stats by aggregating the `nba_games` index and index
+them into `nba_team_stats`.
 
-balldontlie.io docs: https://docs.balldontlie.io/
-Free tier does not require an API key for the /teams and /season_averages
-style endpoints used here, but the API has evolved -- check the current docs
-if endpoints below 404.
+Run fetch_nba_games.py first -- this script reads its output.
 
 Run:
     python ingest/fetch_nba_stats.py
 """
 import sys
-from datetime import date, datetime, timezone
+from collections import defaultdict
+from datetime import datetime, timezone
 
-import requests
 from elasticsearch import helpers
+from nba_api.stats.static import teams as nba_teams
 
 from es_client import get_client
+from indices import reset_index
+from teams import canonical_team
 
 INDEX = "nba_team_stats"
+GAMES_INDEX = "nba_games"
 SEASON = "2025-26"
-BASE_URL = "https://api.balldontlie.io/v1"
+
+ABBREVIATIONS = {canonical_team(t["full_name"]): t["abbreviation"] for t in nba_teams.get_teams()}
 
 
-def fetch_teams() -> list[dict]:
-    resp = requests.get(f"{BASE_URL}/teams", timeout=30)
-    resp.raise_for_status()
-    return resp.json()["data"]
+def fetch_final_games(es) -> list[dict]:
+    games = [
+        hit["_source"]
+        for hit in helpers.scan(
+            es,
+            index=GAMES_INDEX,
+            query={"query": {"term": {"status": "final"}}},
+        )
+    ]
+    return sorted(games, key=lambda g: g["date"])
 
 
-def fetch_team_record(team_id: int) -> dict:
-    """Placeholder aggregation call.
+def aggregate(games: list[dict]) -> dict[str, dict]:
+    """Per-team record, scoring, home/away splits and last-10 form.
 
-    TODO(Aaron/Raymond): balldontlie's stats/season_averages endpoints are
-    player-level, not team-level. Team win/loss + PPG splits need to be
-    derived by aggregating `nba_games` (see fetch_nba_games.py) once that
-    index is populated, OR pulled from a secondary source (e.g.
-    stats.nba.com via nba_api) if a direct team-stats endpoint isn't
-    available on the free tier. Wire this up once nba_games has real data --
-    until then this returns placeholder zeros so the pipeline runs
-    end-to-end and the index has the right shape.
+    `net_rating` is per-game point differential (points scored minus points
+    allowed, per game). True net rating is per 100 possessions, which needs
+    possession counts nba_games doesn't store; at NBA pace (~100 possessions
+    per game) the two are within a point or so and rank teams almost
+    identically, which is all the model's 0.5 weight needs.
     """
-    return {
-        "games_played": 0,
-        "wins": 0,
-        "losses": 0,
-        "points_per_game": 0.0,
-        "points_allowed_per_game": 0.0,
-        "net_rating": 0.0,
-        "home_win_pct": 0.0,
-        "away_win_pct": 0.0,
-        "last_10_wins": 0,
-        "last_10_losses": 0,
-    }
+    acc = defaultdict(lambda: {
+        "results": [], "points_for": 0, "points_against": 0,
+        "home_w": 0, "home_g": 0, "away_w": 0, "away_g": 0,
+    })
+    for g in games:
+        for team, pts_for, pts_against, is_home in (
+            (g["home_team"], g["home_score"], g["away_score"], True),
+            (g["away_team"], g["away_score"], g["home_score"], False),
+        ):
+            a = acc[team]
+            won = g["winner"] == team
+            a["results"].append(won)
+            a["points_for"] += pts_for
+            a["points_against"] += pts_against
+            side = "home" if is_home else "away"
+            a[f"{side}_g"] += 1
+            a[f"{side}_w"] += won
 
-
-def build_narrative(stats: dict) -> str:
-    """Generate a short natural-language blurb describing the team's current
-    form/play style from its stats. This is what gets indexed into the
-    `narrative` semantic_text field -- Elastic auto-embeds it with the
-    deployment's default EIS model at index time, no model setup needed.
-
-    This is a simple template, not an LLM call -- keeps ingestion fast and
-    free. A stretch goal is generating these with an EIS chat completion
-    call instead (see eis_guide.md section 3) for richer, less templated
-    text, but templated text embeds and searches just as well for the demo.
-    """
-    net_rating = stats["net_rating"]
-    last_10_wins = stats["last_10_wins"]
-    last_10_losses = stats["last_10_losses"]
-    home_win_pct = stats["home_win_pct"]
-
-    if net_rating >= 8:
-        form = "Elite two-way team playing at a dominant level"
-    elif net_rating >= 2:
-        form = "Solid, above-average team"
-    elif net_rating >= -2:
-        form = "Middle-of-the-pack team with an inconsistent identity"
-    else:
-        form = "Struggling team, below-average on both ends"
-
-    if last_10_wins >= 8:
-        streak = "on a hot streak over its last 10 games"
-    elif last_10_wins >= 5:
-        streak = "with a roughly even record over its last 10 games"
-    else:
-        streak = "in a rough stretch over its last 10 games"
-
-    home_note = (
-        "dominant at home" if home_win_pct >= 0.7
-        else "shaky at home" if home_win_pct < 0.5
-        else "steady at home"
-    )
-
-    return f"{form}, {streak}, {home_note}."
-
-
-def build_records(teams: list[dict]) -> list[dict]:
-    now = datetime.now(timezone.utc).isoformat()
-    records = []
-    for t in teams:
-        team_stats = fetch_team_record(t["id"])
-        record = {
-            "team_id": t["abbreviation"],
-            "team": t["full_name"],
-            "team_abbreviation": t["abbreviation"],
-            "season": SEASON,
-            "last_updated": now,
-            **team_stats,
-            "narrative": build_narrative(team_stats),
+    stats = {}
+    for team, a in acc.items():
+        gp = len(a["results"])
+        last_10 = a["results"][-10:]
+        ppg = a["points_for"] / gp
+        oppg = a["points_against"] / gp
+        stats[team] = {
+            "games_played": gp,
+            "wins": sum(a["results"]),
+            "losses": gp - sum(a["results"]),
+            "points_per_game": round(ppg, 1),
+            "points_allowed_per_game": round(oppg, 1),
+            "net_rating": round(ppg - oppg, 1),
+            "home_win_pct": round(a["home_w"] / a["home_g"], 3) if a["home_g"] else 0.0,
+            "away_win_pct": round(a["away_w"] / a["away_g"], 3) if a["away_g"] else 0.0,
+            "last_10_wins": sum(last_10),
+            "last_10_losses": len(last_10) - sum(last_10),
         }
-        records.append(record)
-    return records
+    return stats
+
+
+def _rank(stats: dict[str, dict], field: str, descending: bool = True) -> dict[str, int]:
+    """1-based league rank for `field` (1 = best)."""
+    ordered = sorted(stats, key=lambda t: stats[t][field], reverse=descending)
+    return {team: i + 1 for i, team in enumerate(ordered)}
+
+
+def build_narratives(stats: dict[str, dict]) -> dict[str, str]:
+    """Generate a short natural-language blurb per team describing its form and
+    play style. This is what gets indexed into the `narrative` semantic_text
+    field and embedded by ELSER at index time.
+
+    Buckets are league-relative ranks rather than fixed thresholds: a fixed
+    cutoff like "net_rating >= 8" puts most of the league in one bucket in a
+    typical season, which makes every blurb read the same and semantic search
+    useless. Ranking guarantees the spread. Still a template, not an LLM call,
+    so ingestion stays fast and free.
+    """
+    n = len(stats)
+    overall = _rank(stats, "net_rating")
+    offense = _rank(stats, "points_per_game")
+    defense = _rank(stats, "points_allowed_per_game", descending=False)
+    top, bottom = n // 5, n - n // 5  # top/bottom ~20% get a strong descriptor
+
+    narratives = {}
+    for team, s in stats.items():
+        r = overall[team]
+        if r <= 5:
+            form = "Elite title contender dominating on both ends"
+        elif r <= 12:
+            form = "Strong playoff-caliber team"
+        elif r <= 18:
+            form = "Middle-of-the-pack team with an inconsistent identity"
+        elif r <= 24:
+            form = "Below-average team that struggles to close out games"
+        else:
+            form = "Rebuilding team losing badly most nights"
+
+        if offense[team] <= top:
+            off = "a high-powered, explosive offense"
+        elif offense[team] > bottom:
+            off = "a stagnant offense that struggles to score"
+        else:
+            off = "an average offense"
+
+        if defense[team] <= top:
+            dfn = "lockdown defense"
+        elif defense[team] > bottom:
+            dfn = "porous defense that gives up easy points"
+        else:
+            dfn = "middling defense"
+
+        w10 = s["last_10_wins"]
+        if w10 >= 8:
+            streak = f"red-hot to finish the season, winning {w10} of its last 10"
+        elif w10 == 0:
+            streak = "ice cold down the stretch, winless in its last 10"
+        elif w10 <= 3:
+            streak = f"ice cold down the stretch, winning only {w10} of its last 10"
+        else:
+            streak = f"went {w10}-{s['last_10_losses']} over its last 10"
+
+        if s["home_win_pct"] >= 0.7:
+            home = "dominant at home"
+        elif s["home_win_pct"] < 0.45:
+            home = "shaky even at home"
+        else:
+            home = "steady at home"
+
+        narratives[team] = (
+            f"{form} ({s['wins']}-{s['losses']}), with {off} and {dfn}; "
+            f"{streak}, {home}."
+        )
+    return narratives
 
 
 def main():
     es = get_client()
 
-    print("Fetching NBA teams from balldontlie.io ...")
-    teams = fetch_teams()
-    print(f"  {len(teams)} teams found")
+    print(f"Aggregating team stats from '{GAMES_INDEX}' ...")
+    games = fetch_final_games(es)
+    if not games:
+        raise RuntimeError(f"No final games in '{GAMES_INDEX}'. Run fetch_nba_games.py first.")
+    stats = aggregate(games)
+    narratives = build_narratives(stats)
+    print(f"  {len(games)} games -> {len(stats)} teams")
 
-    records = build_records(teams)
+    now = datetime.now(timezone.utc).isoformat()
+    records = [
+        {
+            "team_id": ABBREVIATIONS[team],
+            "team": team,
+            "team_abbreviation": ABBREVIATIONS[team],
+            "season": SEASON,
+            "last_updated": now,
+            **s,
+            "narrative": narratives[team],
+        }
+        for team, s in stats.items()
+    ]
 
-    if es.indices.exists(index=INDEX):
-        es.indices.delete(index=INDEX)
-        print(f"Deleted existing index '{INDEX}'")
-    # NOTE: run mappings/nba_team_stats.json in Dev Tools BEFORE this script
-    # if you want the explicit mapping. Re-running this script after a
-    # dynamic-mapped index was created will not retroactively fix types --
-    # delete the index and re-run the PUT mapping first.
-
+    reset_index(es, INDEX)
     actions = [{"_index": INDEX, "_id": r["team_id"], "_source": r} for r in records]
     success, errors = helpers.bulk(es, actions)
     es.indices.refresh(index=INDEX)

@@ -14,7 +14,9 @@ a trained ML classifier.
 
 ## Hard requirements
 
-1. Elastic Cloud Serverless only (free trial) — no self-hosted ES.
+1. Elastic Cloud only (free trial) — no self-hosted ES. (Originally
+   Serverless; the shared deployment ended up being Cloud Hosted 9.5.3, which
+   supports everything below.)
 2. Explicit mappings for every index — no dynamic mapping.
 3. Elastic Inference Service (EIS) for any LLM/embedding needs — no external
    API keys, no self-managed model deployment.
@@ -29,8 +31,8 @@ a trained ML classifier.
 |---|---|---|
 | 1 | Index mappings: `nba_team_stats`, `nba_games`, `nba_odds` | ✅ scaffolded — [mappings/](../mappings/) |
 | 2 | Sample docs for all 3 indices (unblocks development pre-ingestion) | ✅ done — [mappings/sample_docs.md](../mappings/sample_docs.md) |
-| 3 | Ingest script: NBA team/game stats (balldontlie.io) | 🚧 stubbed — [ingest/fetch_nba_stats.py](../ingest/fetch_nba_stats.py), [ingest/fetch_nba_games.py](../ingest/fetch_nba_games.py) |
-| 4 | Ingest script: NBA odds (The Odds API) | 🚧 stubbed — [ingest/fetch_odds.py](../ingest/fetch_odds.py) |
+| 3 | Ingest script: NBA team/game stats (stats.nba.com via `nba_api`; balldontlie.io now requires a key) | ✅ live — [ingest/fetch_nba_games.py](../ingest/fetch_nba_games.py), [ingest/fetch_nba_stats.py](../ingest/fetch_nba_stats.py) |
+| 4 | Ingest script: NBA odds (The Odds API) | ✅ live — [ingest/fetch_odds.py](../ingest/fetch_odds.py) |
 | 5 | Win-probability formula (ES|QL) | 🚧 drafted — [esql/win_probability.esql](../esql/win_probability.esql) |
 | 6 | Stats-vs-market comparison query | 🚧 drafted — [esql/matchup_comparison.esql](../esql/matchup_comparison.esql) |
 | 7 | Vector/semantic search: `narrative` semantic_text field + search query | 🚧 drafted — [mappings/nba_team_stats.json](../mappings/nba_team_stats.json), [esql/team_narrative_search.esql](../esql/team_narrative_search.esql) |
@@ -40,11 +42,11 @@ a trained ML classifier.
 
 ## Acceptance criteria
 
-- [ ] All three indices exist in the Elastic Serverless project with the
+- [x] All three indices exist in the Elastic deployment with the
       explicit mappings in `mappings/`, not dynamically inferred.
-- [ ] `nba_team_stats` and `nba_games` are populated from balldontlie.io
+- [x] `nba_team_stats` and `nba_games` are populated from stats.nba.com
       (live data, not just the sample docs).
-- [ ] `nba_odds` is populated from The Odds API with de-vigged implied
+- [x] `nba_odds` is populated from The Odds API with de-vigged implied
       probabilities.
 - [ ] The win-probability ES|QL query runs and returns a ranked list of
       teams.
@@ -53,7 +55,7 @@ a trained ML classifier.
       stating a clear delta.
 - [ ] The agent can answer "which games have the biggest gap tonight?" via
       `find_value_mismatches`.
-- [ ] Every `nba_team_stats` doc has a `narrative` (semantic_text) value,
+- [x] Every `nba_team_stats` doc has a `narrative` (semantic_text) value,
       embedded automatically by EIS at index time.
 - [ ] The agent can answer a play-style question ("which teams are playing
       lockdown defense on a hot streak?") via `find_similar_teams`, returning

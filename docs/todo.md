@@ -8,14 +8,15 @@ without waiting for Aaron's ingest scripts to actually work.
 
 **Do this together first (~10 min), then split:**
 
-- [ ] Both: confirm Elastic Cloud Serverless project is created, grab
+- [x] Both: confirm Elastic Cloud project is created, grab
       endpoint + API key, add to a shared `.env` (share via DM, not commit).
-- [ ] Both: run [mappings/nba_team_stats.json](../mappings/nba_team_stats.json),
-      [mappings/nba_games.json](../mappings/nba_games.json),
-      [mappings/nba_odds.json](../mappings/nba_odds.json) in Dev Tools
-      Console to create the indices.
-- [ ] Both: run everything in [mappings/sample_docs.md](../mappings/sample_docs.md)
-      so both indices have test data immediately.
+      _Done — it's Cloud Hosted 9.5.3, not Serverless; works the same for us._
+- [x] Both: create the indices. _Done via `python ingest/indices.py`
+      (versioned index + alias, `nba_team_stats` in `lookup` mode so
+      `LOOKUP JOIN` works, `narrative` pinned to `.elser-2-elastic`)._
+- [x] ~~Both: run everything in [mappings/sample_docs.md](../mappings/sample_docs.md)~~
+      _Skipped — live data landed first, so there's no need for sample docs.
+      Loading them now would overwrite the real BOS/NYK rows._
 
 Once that's done, work independently:
 
@@ -27,31 +28,37 @@ Goal: real, live data flowing into all three indices. Doesn't touch ES|QL or
 Agent Builder — just gets data in with the right shape, matching the
 mappings already scaffolded.
 
-- [ ] Get a balldontlie.io API key/access confirmed working (`ingest/fetch_nba_stats.py`,
-      `ingest/fetch_nba_games.py` currently stubbed — team-level win/loss/PPG
-      aggregation TODO is flagged inline in `fetch_nba_stats.py`, needs
-      solving: either aggregate from `nba_games` after that index is
-      populated, or find a direct team-stats endpoint).
-- [ ] Get The Odds API key, confirm `ingest/fetch_odds.py` returns real NBA
-      events (`basketball_nba` sport key) — test with `python ingest/fetch_odds.py`
-      and check the console output for indexed count.
-- [ ] Verify de-vig math in `fetch_odds.py`'s `devig()` — sanity check against
-      a known matchup where you know the "true" market split.
-- [ ] Once `nba_games` is populated, close the loop on `fetch_nba_stats.py`'s
-      TODO: derive `wins`/`losses`/`points_per_game`/`net_rating`/`last_10_*`
-      by aggregating `nba_games` per team (this can be a second Python pass
-      or an ES aggregation query — either is fine).
-- [ ] Confirm `build_narrative()` in `fetch_nba_stats.py` produces sensible
-      blurbs once real stats replace the placeholder zeros (with all-zero
-      stats every team currently gets the same "middle-of-the-pack" text,
-      which makes semantic search useless). Tweak thresholds if too many
-      teams land in the same bucket.
-- [ ] Set up a way to re-run ingestion close to demo time so odds/stats are
-      fresh (a simple `python ingest/fetch_*.py && python ingest/fetch_*.py`
-      chain is enough, no need for real scheduling).
-- [ ] Sanity-check final indices in Dev Tools: `GET nba_team_stats/_count`,
-      `GET nba_games/_count`, `GET nba_odds/_count` — flag Raymond once
-      counts look real so the demo can switch off sample data.
+- [x] ~~Get a balldontlie.io API key~~ — balldontlie now returns 401 without
+      a key, so `fetch_nba_games.py` uses stats.nba.com via `nba_api` instead
+      (free, no key). All 1230 games of the 2025-26 regular season, including
+      the 5 neutral-site games that list both teams as away.
+- [x] The Odds API key works — `fetch_odds.py` indexed 190 records (41 events,
+      5 bookmakers). Events are 2026-27 season games starting 2026-10-20.
+      Odds API names are canonical for `team`. `ingest/teams.py` maps
+      stats.nba.com's "LA Clippers" → "Los Angeles Clippers".
+- [x] De-vig math verified: -110/-110 → 50/50, -200/+170 → 64.3/35.7, and
+      every live bookmaker/game pair sums to exactly 1.0. (Fixed
+      `sample_docs.md`, which had the *raw* vigged probabilities.)
+- [x] `fetch_nba_stats.py` TODO closed — it aggregates `nba_games` per team
+      (record, PPG/opp PPG, home/away win %, last 10). `net_rating` = per-game
+      point differential (see docs/model.md). Stats are end-of-2025-26 and
+      serve as priors for the 2026-27 games in the odds.
+- [x] Narratives: switched fixed thresholds to league-relative ranks
+      (offense/defense top/bottom 20%, net-rating tiers). All 30 blurbs are
+      distinct.
+- [x] Re-run ingestion: `./ingest/refresh_all.sh` (ensures indices → games →
+      stats → odds → prints counts). Uses 1 Odds API request per run.
+- [x] Counts: `nba_team_stats` 30, `nba_games` 1230, `nba_odds` 190.
+      **Raymond: live data has landed, so build against it directly.**
+      Also verified on live data: the `find_value_mismatches` `LOOKUP JOIN`
+      works through the alias with 0 unmatched odds rows, and
+      `team_narrative_search` "lockdown defense and playing hot" ranks
+      Pistons, Celtics, Rockets above the Knicks.
+
+**Fixed along the way:** the ingest scripts used to delete their index before
+indexing. The re-created index got dynamic mappings, losing
+`semantic_text` and lookup mode. They now clear docs with
+`reset_index()` in `ingest/indices.py` instead.
 
 **You do NOT need to touch:** `esql/`, `agent_builder/`. Those are built and
 tested against the sample docs — swapping in live data later should require

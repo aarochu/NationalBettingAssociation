@@ -63,7 +63,7 @@ Which games tonight have the biggest gap between the market and the stats model?
 
 > "The Kaggle-style datasets in the World Cup starter were simulated — ours
 > is real, live NBA data and real, live sportsbook odds, running entirely on
-> Elastic Serverless with zero external API keys for the AI side thanks to
+> Elastic Cloud with zero external API keys for the AI side thanks to
 > EIS."
 
 ## If something breaks live

@@ -1,3 +1,4 @@
-elasticsearch>=8.14.0
+elasticsearch>=9.0.0
 requests
 python-dotenv
+nba_api

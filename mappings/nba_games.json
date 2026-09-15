@@ -1,6 +1,10 @@
-// Paste into Kibana Dev Tools Console and run.
-PUT nba_games
+// Paste into Kibana Dev Tools Console and run -- or run `python ingest/indices.py`
+// (the source of truth; keep this in sync).
+PUT nba_games_v1
 {
+  "aliases": {
+    "nba_games": { "is_write_index": true }
+  },
   "mappings": {
     "properties": {
       "game_id":      { "type": "keyword" },

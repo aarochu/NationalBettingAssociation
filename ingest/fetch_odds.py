@@ -15,6 +15,8 @@ from dotenv import load_dotenv
 from elasticsearch import helpers
 
 from es_client import get_client
+from indices import reset_index
+from teams import canonical_team
 
 load_dotenv()
 
@@ -54,8 +56,8 @@ def to_records(events: list[dict]) -> list[dict]:
 
     for event in events:
         game_id = event["id"]
-        home_team = event["home_team"]
-        away_team = event["away_team"]
+        home_team = canonical_team(event["home_team"])
+        away_team = canonical_team(event["away_team"])
         date = event["commence_time"]
 
         for bookmaker in event.get("bookmakers", []):
@@ -65,7 +67,7 @@ def to_records(events: list[dict]) -> list[dict]:
             if not h2h:
                 continue
 
-            outcomes = {o["name"]: o["price"] for o in h2h["outcomes"]}
+            outcomes = {canonical_team(o["name"]): o["price"] for o in h2h["outcomes"]}
             if home_team not in outcomes or away_team not in outcomes:
                 continue
 
@@ -110,12 +112,7 @@ def main():
 
     records = to_records(events)
 
-    if es.indices.exists(index=INDEX):
-        es.indices.delete(index=INDEX)
-        print(f"Deleted existing index '{INDEX}'")
-    # NOTE: run mappings/nba_odds.json in Dev Tools BEFORE this script for
-    # the explicit mapping.
-
+    reset_index(es, INDEX)
     actions = [{"_index": INDEX, "_source": r} for r in records]
     success, errors = helpers.bulk(es, actions) if actions else (0, [])
     es.indices.refresh(index=INDEX)

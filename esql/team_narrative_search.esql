@@ -1,0 +1,31 @@
+// Semantic / vector search over team play-style narratives.
+// Paste into Kibana Dev Tools Console (ES|QL tab) to run.
+//
+// `narrative` is a semantic_text field (see mappings/nba_team_stats.json) --
+// Elastic auto-embeds it with the deployment's default EIS model at index
+// time. MATCH() against a semantic_text field runs a semantic (vector)
+// search under the hood, not a keyword match -- so this finds teams whose
+// play style matches the query's MEANING, not its exact words.
+//
+// Example: searching "lockdown defense and playing hot right now" can match
+// a team whose narrative says "elite two-way team on a hot streak" even
+// though none of the query words appear verbatim.
+
+FROM nba_team_stats
+| WHERE MATCH(narrative, "lockdown defense and playing hot right now")
+| KEEP team, narrative, net_rating, last_10_wins, last_10_losses
+| SORT net_rating DESC
+
+// --- Fallback (Query DSL) ---
+// If your Elastic version's ES|QL MATCH() doesn't yet support semantic_text
+// fields, run this equivalent semantic query in Dev Tools instead:
+//
+// GET nba_team_stats/_search
+// {
+//   "query": {
+//     "semantic": {
+//       "field": "narrative",
+//       "query": "lockdown defense and playing hot right now"
+//     }
+//   }
+// }

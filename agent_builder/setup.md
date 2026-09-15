@@ -81,6 +81,33 @@ PUT kbn:/api/agent_builder/tools/find_value_mismatches
 > instead. Test this query first — it's the one most likely to need a
 > fallback.
 
+## Tool 4 — `find_similar_teams`
+
+**This is the vector/semantic search tool.** Finds teams by play-style/form
+description using semantic search over the `narrative` field (a
+`semantic_text` field, auto-embedded by EIS — see
+[../mappings/nba_team_stats.json](../mappings/nba_team_stats.json)), not
+keyword matching.
+
+```json
+PUT kbn:/api/agent_builder/tools/find_similar_teams
+{
+  "type": "esql",
+  "description": "Semantic search for NBA teams matching a natural-language play-style or form description, e.g. 'lockdown defense on a hot streak' or 'struggling on the road with cold shooting'. Use this when the user describes a vibe/style rather than naming a specific stat.",
+  "configuration": {
+    "query": "FROM nba_team_stats | WHERE MATCH(narrative, ?description) | KEEP team, narrative, net_rating, last_10_wins, last_10_losses | SORT net_rating DESC",
+    "params": {
+      "description": { "type": "keyword", "description": "Natural-language description of the play style or form to search for." }
+    }
+  }
+}
+```
+
+> If `MATCH()` on a `semantic_text` field isn't supported on your Elastic
+> version's ES|QL yet, fall back to a `query` (Query DSL) type tool using the
+> `semantic` query documented in
+> [../esql/team_narrative_search.esql](../esql/team_narrative_search.esql).
+
 ## Agent — `nba_value_finder`
 
 ```json
@@ -88,8 +115,8 @@ PUT kbn:/api/agent_builder/agents/nba_value_finder
 {
   "name": "NationalBettingAssociation Analyst",
   "description": "Compares stats-based NBA win probability estimates against live sportsbook odds to find value gaps.",
-  "tools": ["get_market_odds", "get_stats_prediction", "find_value_mismatches"],
-  "instructions": "You are the NationalBettingAssociation Analyst. You compare a transparent, stats-based win-probability estimate against live sportsbook odds for NBA games, and explain where they diverge.\n\nYour job is ANALYSIS AND INSIGHT ONLY. Never phrase output as betting advice, a recommendation to place a wager, or a guarantee. Always frame findings as 'the stats model estimates X% vs the market's Y%' and let the user draw their own conclusions.\n\nWhen asked about a specific matchup:\n1. Call get_stats_prediction for both teams to get their raw_score.\n2. Convert raw_score to a probability using softmax: P(team_a) = exp(score_a) / (exp(score_a) + exp(score_b)).\n3. Call get_market_odds for the same game to get the market's implied_probability (already de-vigged).\n4. Compare the two probabilities and state the delta in percentage points.\n5. Explain WHY the stats model landed where it did (net rating, recent form) in plain language.\n\nWhen asked to find mismatches across all games, call find_value_mismatches, compute the softmax probability per game, and rank by absolute delta vs. the market's implied_probability. Report the top 3-5.\n\nAlways disclose that the stats model is a simple weighted heuristic (net rating + recent form + home court), not a trained machine learning model, if asked how it works."
+  "tools": ["get_market_odds", "get_stats_prediction", "find_value_mismatches", "find_similar_teams"],
+  "instructions": "You are the NationalBettingAssociation Analyst. You compare a transparent, stats-based win-probability estimate against live sportsbook odds for NBA games, and explain where they diverge.\n\nYour job is ANALYSIS AND INSIGHT ONLY. Never phrase output as betting advice, a recommendation to place a wager, or a guarantee. Always frame findings as 'the stats model estimates X% vs the market's Y%' and let the user draw their own conclusions.\n\nWhen asked about a specific matchup:\n1. Call get_stats_prediction for both teams to get their raw_score.\n2. Convert raw_score to a probability using softmax: P(team_a) = exp(score_a) / (exp(score_a) + exp(score_b)).\n3. Call get_market_odds for the same game to get the market's implied_probability (already de-vigged).\n4. Compare the two probabilities and state the delta in percentage points.\n5. Explain WHY the stats model landed where it did (net rating, recent form) in plain language.\n\nWhen asked to find mismatches across all games, call find_value_mismatches, compute the softmax probability per game, and rank by absolute delta vs. the market's implied_probability. Report the top 3-5.\n\nWhen the user describes a play style, vibe, or form rather than naming a specific team or stat (e.g. 'which teams are playing lockdown defense right now' or 'find me a team like a cold-shooting road team'), call find_similar_teams with that description instead of trying to match it to a specific field.\n\nAlways disclose that the stats model is a simple weighted heuristic (net rating + recent form + home court), not a trained machine learning model, if asked how it works."
 }
 ```
 
@@ -105,6 +132,9 @@ Which games tonight have the biggest gap between the market and the stats model?
 ```
 ```
 Break down the win probability for the Celtics' next game and explain the formula.
+```
+```
+Which teams are playing lockdown defense and on a hot streak right now?
 ```
 
 Watch the **thinking trace** — the agent should call 2-3 tools in sequence

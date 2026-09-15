@@ -41,6 +41,11 @@ mappings already scaffolded.
       TODO: derive `wins`/`losses`/`points_per_game`/`net_rating`/`last_10_*`
       by aggregating `nba_games` per team (this can be a second Python pass
       or an ES aggregation query — either is fine).
+- [ ] Confirm `build_narrative()` in `fetch_nba_stats.py` produces sensible
+      blurbs once real stats replace the placeholder zeros (with all-zero
+      stats every team currently gets the same "middle-of-the-pack" text,
+      which makes semantic search useless). Tweak thresholds if too many
+      teams land in the same bucket.
 - [ ] Set up a way to re-run ingestion close to demo time so odds/stats are
       fresh (a simple `python ingest/fetch_*.py && python ingest/fetch_*.py`
       chain is enough, no need for real scheduling).
@@ -75,10 +80,18 @@ Aaron's ingest scripts working.
       Elastic tiers/versions). If it fails, fall back to the two-tool
       approach noted in setup.md and adjust the agent instructions
       accordingly.
+- [ ] Run [esql/team_narrative_search.esql](../esql/team_narrative_search.esql)
+      against the sample docs — try a query with no shared keywords (e.g.
+      "lockdown defense and playing hot") and confirm Celtics ranks above
+      Knicks. If ES|QL `MATCH()` rejects the semantic_text field, use the
+      Query DSL fallback in the same file.
+- [ ] Build Tool 4 `find_similar_teams` (vector search tool) from
+      [agent_builder/setup.md](../agent_builder/setup.md) and confirm the
+      agent routes play-style questions to it.
 - [ ] Verify the agent actually computes the softmax conversion correctly in
       its reasoning (ask it to show its work) — tune the instructions in
       the agent config if it skips the math or hallucinates a probability.
-- [ ] Chat-test the three demo prompts in [agent_builder/setup.md](../agent_builder/setup.md)
+- [ ] Chat-test the four demo prompts in [agent_builder/setup.md](../agent_builder/setup.md)
       end to end against sample data.
 - [ ] Refine [docs/demo_script.md](demo_script.md) based on what actually
       looks good live — cut anything that doesn't demo well in the thinking

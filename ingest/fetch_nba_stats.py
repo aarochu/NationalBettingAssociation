@@ -54,17 +54,60 @@ def fetch_team_record(team_id: int) -> dict:
     }
 
 
+def build_narrative(stats: dict) -> str:
+    """Generate a short natural-language blurb describing the team's current
+    form/play style from its stats. This is what gets indexed into the
+    `narrative` semantic_text field -- Elastic auto-embeds it with the
+    deployment's default EIS model at index time, no model setup needed.
+
+    This is a simple template, not an LLM call -- keeps ingestion fast and
+    free. A stretch goal is generating these with an EIS chat completion
+    call instead (see eis_guide.md section 3) for richer, less templated
+    text, but templated text embeds and searches just as well for the demo.
+    """
+    net_rating = stats["net_rating"]
+    last_10_wins = stats["last_10_wins"]
+    last_10_losses = stats["last_10_losses"]
+    home_win_pct = stats["home_win_pct"]
+
+    if net_rating >= 8:
+        form = "Elite two-way team playing at a dominant level"
+    elif net_rating >= 2:
+        form = "Solid, above-average team"
+    elif net_rating >= -2:
+        form = "Middle-of-the-pack team with an inconsistent identity"
+    else:
+        form = "Struggling team, below-average on both ends"
+
+    if last_10_wins >= 8:
+        streak = "on a hot streak over its last 10 games"
+    elif last_10_wins >= 5:
+        streak = "with a roughly even record over its last 10 games"
+    else:
+        streak = "in a rough stretch over its last 10 games"
+
+    home_note = (
+        "dominant at home" if home_win_pct >= 0.7
+        else "shaky at home" if home_win_pct < 0.5
+        else "steady at home"
+    )
+
+    return f"{form}, {streak}, {home_note}."
+
+
 def build_records(teams: list[dict]) -> list[dict]:
     now = datetime.now(timezone.utc).isoformat()
     records = []
     for t in teams:
+        team_stats = fetch_team_record(t["id"])
         record = {
             "team_id": t["abbreviation"],
             "team": t["full_name"],
             "team_abbreviation": t["abbreviation"],
             "season": SEASON,
             "last_updated": now,
-            **fetch_team_record(t["id"]),
+            **team_stats,
+            "narrative": build_narrative(team_stats),
         }
         records.append(record)
     return records

@@ -36,6 +36,17 @@ explaining it in plain language.
 > "Watch it call our custom tools in sequence — pulling the stats prediction,
 > pulling the market odds, then reasoning over both to explain the gap."
 
+## Beat 3.5 — vector search (15s)
+
+Ask:
+
+```
+Which teams are playing lockdown defense and on a hot streak right now?
+```
+
+> "That's semantic search — each team has a narrative field embedded by EIS,
+> so it matches on meaning. None of those words have to appear in the data."
+
 ## Beat 4 — the payoff (15s)
 
 Ask the follow-up:

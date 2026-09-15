@@ -17,7 +17,9 @@ the two disagree.
    no trained ML classifier, no black box.
 3. Compares that estimate against the **market implied probability** derived from
    the odds, and flags games where the two diverge meaningfully.
-4. Exposes all of this through an **Elastic Agent Builder** agent with custom tools,
+4. Lets you **search teams by play style** using vector/semantic search over
+   auto-generated team narratives.
+5. Exposes all of this through an **Elastic Agent Builder** agent with custom tools,
    so you can just ask: *"Is there a value mismatch in tonight's Celtics vs Knicks
    game?"*
 
@@ -28,8 +30,9 @@ the two disagree.
 | Explicit mappings | Every index (`nba_team_stats`, `nba_games`, `nba_odds`) is mapped by hand — no dynamic mapping |
 | Aggregations | Recent form / rolling stats computed via ES aggregations |
 | ES\|QL | The win-probability formula and the stats-vs-odds comparison are ES\|QL queries |
-| Agent Builder | Three custom tools + one custom agent chain together to answer natural-language questions |
-| Elastic Inference Service (EIS) | Powers the agent's LLM — no external API keys |
+| Vector / semantic search | Each team has a `narrative` `semantic_text` field, auto-embedded by EIS — search teams by play style ("lockdown defense on a hot streak") by meaning, not keywords |
+| Agent Builder | Four custom tools + one custom agent chain together to answer natural-language questions |
+| Elastic Inference Service (EIS) | Powers the agent's LLM and the narrative embeddings — no external API keys |
 
 ## Repo layout
 
@@ -91,8 +94,8 @@ duplicates.
 
 ### 7. Build the Agent Builder tools + agent
 
-In your Elastic Serverless project, go to **Agents**. Paste the four blocks in
-[agent_builder/setup.md](agent_builder/setup.md) (three tools + one agent) into
+In your Elastic Serverless project, go to **Agents**. Paste the five blocks in
+[agent_builder/setup.md](agent_builder/setup.md) (four tools + one agent) into
 Dev Tools Console, or follow the manual walkthrough in the same file.
 
 ### 8. Chat with it
@@ -108,6 +111,9 @@ Which games tonight have the biggest gap between the market and the stats model?
 ```
 Break down the win probability for the Lakers' next game.
 ```
+```
+Which teams are playing lockdown defense and on a hot streak right now?
+```
 
 ## Docs
 
@@ -119,4 +125,4 @@ Break down the win probability for the Lakers' next game.
 
 - No trained ML classifier — the "model" is a transparent, documented formula.
 - No real-money betting integration of any kind.
-- No custom embedding model — EIS defaults only, if semantic search is added as a stretch goal.
+- No custom embedding model — semantic search uses the EIS default model via `semantic_text`.

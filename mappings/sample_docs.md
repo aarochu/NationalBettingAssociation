@@ -27,7 +27,8 @@ POST nba_team_stats/_doc
   "away_win_pct": 0.75,
   "last_10_wins": 8,
   "last_10_losses": 2,
-  "last_updated": "2026-09-14"
+  "last_updated": "2026-09-14",
+  "narrative": "Elite two-way team on a hot streak, dominant at home, elite perimeter defense and efficient three-point shooting."
 }
 ```
 
@@ -48,7 +49,8 @@ POST nba_team_stats/_doc
   "away_win_pct": 0.5,
   "last_10_wins": 6,
   "last_10_losses": 4,
-  "last_updated": "2026-09-14"
+  "last_updated": "2026-09-14",
+  "narrative": "Inconsistent form, streaky shooting, solid interior defense but struggles on the road against top offenses."
 }
 ```
 

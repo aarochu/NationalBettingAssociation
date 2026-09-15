@@ -17,7 +17,17 @@ PUT nba_team_stats
       "away_win_pct":             { "type": "float" },
       "last_10_wins":             { "type": "integer" },
       "last_10_losses":           { "type": "integer" },
-      "last_updated":             { "type": "date" }
+      "last_updated":             { "type": "date" },
+      "narrative":                { "type": "semantic_text" }
     }
   }
 }
+
+// `narrative` is a short auto-generated blurb describing the team's current
+// play style/form (e.g. "elite defense, cold shooting on the road"). Elastic
+// Serverless auto-embeds semantic_text fields with the deployment's default
+// EIS model at index time -- no model setup needed. This is what powers
+// vector/semantic search: querying `narrative` with natural language finds
+// teams by playstyle/form even when the query doesn't share exact keywords
+// with the blurb. See esql/team_narrative_search.esql and the
+// find_similar_teams tool in agent_builder/setup.md.

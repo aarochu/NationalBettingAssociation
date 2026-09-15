@@ -67,6 +67,27 @@ with `|delta| >= 0.08` (8 percentage points) as worth mentioning — this
 threshold is arbitrary and easy to tune live if it's producing too many or
 too few results in the demo.
 
+## The semantic layer (vector search)
+
+Alongside the numeric formula, each team gets a short auto-generated
+`narrative` blurb (e.g. "elite two-way team on a hot streak, dominant at
+home") stored in a `semantic_text` field. Elastic Serverless automatically
+embeds this text with the deployment's default EIS model at index time — no
+model deployment, no API keys.
+
+This powers the `find_similar_teams` tool: a query like *"which teams are
+playing lockdown defense and on a hot streak"* matches teams by the
+**meaning** of their narrative, not by keyword overlap. It's a genuinely
+different retrieval mechanism from the ES|QL formula above — the formula
+answers "how good is this team, numerically," the semantic search answers
+"which teams match this vibe/description."
+
+Narratives are generated from a simple template over the same stats used in
+the formula (see `build_narrative()` in
+[ingest/fetch_nba_stats.py](../ingest/fetch_nba_stats.py)) — not an LLM call,
+to keep ingestion fast and free. A stretch goal is generating richer,
+less-templated blurbs with an EIS chat completion call instead.
+
 ## Explicit disclaimer
 
 This is **analysis and insight only**. It is not betting advice, it does not

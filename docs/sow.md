@@ -18,8 +18,8 @@ a trained ML classifier.
 2. Explicit mappings for every index — no dynamic mapping.
 3. Elastic Inference Service (EIS) for any LLM/embedding needs — no external
    API keys, no self-managed model deployment.
-4. Must demonstrate: (a) aggregations, (b) ES|QL, (c) an Agent Builder custom
-   agent with tools.
+4. Must demonstrate: (a) aggregations, (b) ES|QL, (c) vector/semantic search,
+   (d) an Agent Builder custom agent with tools.
 5. Odds API key and Elastic API key live in `.env` (gitignored) — never
    committed.
 
@@ -33,9 +33,10 @@ a trained ML classifier.
 | 4 | Ingest script: NBA odds (The Odds API) | 🚧 stubbed — [ingest/fetch_odds.py](../ingest/fetch_odds.py) |
 | 5 | Win-probability formula (ES|QL) | 🚧 drafted — [esql/win_probability.esql](../esql/win_probability.esql) |
 | 6 | Stats-vs-market comparison query | 🚧 drafted — [esql/matchup_comparison.esql](../esql/matchup_comparison.esql) |
-| 7 | Agent Builder: 3 tools + 1 agent | 🚧 drafted — [agent_builder/setup.md](../agent_builder/setup.md) |
-| 8 | Demo script | ✅ done — [docs/demo_script.md](demo_script.md) |
-| 9 | Model explanation doc | ✅ done — [docs/model.md](model.md) |
+| 7 | Vector/semantic search: `narrative` semantic_text field + search query | 🚧 drafted — [mappings/nba_team_stats.json](../mappings/nba_team_stats.json), [esql/team_narrative_search.esql](../esql/team_narrative_search.esql) |
+| 8 | Agent Builder: 4 tools + 1 agent | 🚧 drafted — [agent_builder/setup.md](../agent_builder/setup.md) |
+| 9 | Demo script | ✅ done — [docs/demo_script.md](demo_script.md) |
+| 10 | Model explanation doc | ✅ done — [docs/model.md](model.md) |
 
 ## Acceptance criteria
 
@@ -52,6 +53,11 @@ a trained ML classifier.
       stating a clear delta.
 - [ ] The agent can answer "which games have the biggest gap tonight?" via
       `find_value_mismatches`.
+- [ ] Every `nba_team_stats` doc has a `narrative` (semantic_text) value,
+      embedded automatically by EIS at index time.
+- [ ] The agent can answer a play-style question ("which teams are playing
+      lockdown defense on a hot streak?") via `find_similar_teams`, returning
+      teams matched by meaning, not exact keywords.
 - [ ] Every agent response frames output as analysis, never as betting
       advice.
 - [ ] Demo rehearsed end-to-end at least once before presenting.
@@ -60,8 +66,8 @@ a trained ML classifier.
 
 - No trained ML classifier / no sklearn.
 - No real-money betting integration of any kind.
-- No custom embedding model — EIS defaults only, if semantic search over
-  news/recaps is added as a stretch goal.
+- No custom embedding model — semantic search uses the EIS default model
+  via `semantic_text` only.
 
 ## Team split
 

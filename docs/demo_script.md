@@ -57,22 +57,6 @@ Which teams are playing lockdown defense and on a hot streak right now?
 > "That's semantic search — each team has a narrative field embedded by EIS,
 > so it matches on meaning. None of those words have to appear in the data."
 
-**This prompt only works on sample data.** The hand-written sample narratives
-mention defense and shooting; `build_narrative()` in the ingest script never
-produces either word — its vocabulary is limited to overall quality, last-10
-form, and home/away. So on live data "lockdown defense" has nothing to match
-and the result degrades to roughly a quality ranking, which looks like the
-tool working while proving nothing.
-
-Once live data lands, either use a prompt inside the template's actual
-vocabulary:
-
-```
-Which teams are rolling right now and tough to beat at home?
-```
-
-or get `build_narrative()` widened first (flagged for Aaron in the todo). The
-first option is the safe demo; the second is the better demo.
 
 ## Beat 4 — the payoff (15s)
 
@@ -99,13 +83,9 @@ Have `mappings/sample_docs.md` data still indexed as a fallback — the demo
 prompts work identically against sample data, so a live-API hiccup doesn't
 kill the demo.
 
-If Beat 4 errors, `find_value_mismatches` is the likely culprit —
-`LOOKUP JOIN` needs a lookup-mode index. Fall back to asking about a second
-named matchup instead, which only uses the two single-team tools. The fix and
-the no-join fallback tool are in
-[../agent_builder/setup.md](../agent_builder/setup.md).
+If Beat 4 errors, `find_value_mismatches` is the likely culprit. Fall back to
+asking about a second named matchup, which only uses the two single-team
+tools. `ingest/indices.py` now creates `nba_team_stats` in lookup mode so the
+join should work, but the no-join fallback tool is in
+[../agent_builder/setup.md](../agent_builder/setup.md) if it doesn't.
 
-One silent failure worth guarding against: if you built
-`nba_team_stats_lookup` and Aaron's live data landed after that, the mirror is
-stale and you'll be scoring live odds against sample stats. Re-run the
-`_reindex` at the merge point.

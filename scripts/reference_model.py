@@ -92,9 +92,10 @@ def devig(implied_a, implied_b):
     This duplicates devig() in ingest/fetch_odds.py on purpose. That one
     normalizes at write time; this one is a safety net for documents that
     were written without it -- including the sample docs in
-    mappings/sample_docs.md, whose implied_probability values sum to 1.045.
-    Applying this to already-de-vigged input is a no-op, so it is always safe
-    to run.
+    mappings/sample_docs.md. Those are de-vigged at ingest now, so this is a
+    no-op on current sample data -- but live bookmaker rows can still arrive
+    un-normalized, and applying this to already-de-vigged input costs
+    nothing, so it is always safe to run.
     """
     total = implied_a + implied_b
     if total <= 0:
@@ -158,9 +159,13 @@ SAMPLE_KNICKS = {
     "last_10_losses": 4,
 }
 
+# De-vigged at ingest as of the live-data commit; mappings/sample_docs.md now
+# stores probabilities that already sum to 1.0. The devig() call below is
+# therefore a no-op on this input, which is the point -- it stays correct
+# whether or not the stored values were normalized.
 SAMPLE_MARKET = {
-    "Boston Celtics": 0.637,
-    "New York Knicks": 0.408,
+    "Boston Celtics": 0.6095,
+    "New York Knicks": 0.3905,
 }
 
 

@@ -250,12 +250,15 @@ def check_lookup_join():
     """Returns the stats index name that works with LOOKUP JOIN, or None."""
     ok, rows = esql(q_mismatches("nba_team_stats"))
     if ok:
-        record(PASS, "LOOKUP JOIN works directly against nba_team_stats",
-               "No lookup-mode mirror needed. Use the tool JSON as committed.")
+        record(PASS, "LOOKUP JOIN works against nba_team_stats",
+               "Expected -- ingest/indices.py creates it in lookup mode. "
+               "Use the tool JSON as committed.")
         return "nba_team_stats"
 
     record(WARN, "LOOKUP JOIN against nba_team_stats failed", rows)
-    print("        trying the lookup-mode mirror from setup.md...")
+    print("        ingest/indices.py should create this in lookup mode --")
+    print("        check for a stale concrete index (DELETE nba_team_stats,")
+    print("        then re-run ingest). Trying a temporary mirror meanwhile...")
     built, detail = create_lookup_mirror()
     if not built:
         record(FAIL, "Could not build the lookup-mode mirror", detail)
@@ -267,10 +270,10 @@ def check_lookup_join():
     ok, rows = esql(q_mismatches(LOOKUP_INDEX))
     if ok:
         record(PASS, f"LOOKUP JOIN works against {LOOKUP_INDEX}",
-               f"Swap nba_team_stats -> {LOOKUP_INDEX} in "
-               "find_value_mismatches and esql/value_mismatches.esql. "
-               "Remember: this mirror goes stale. Re-reindex after live "
-               "data lands.")
+               "This is a workaround, not the fix: the real problem is that "
+               "nba_team_stats isn't in lookup mode, which ingest/indices.py "
+               "is supposed to guarantee. Delete the stale index and re-run "
+               "ingest rather than shipping the mirror, which goes stale.")
         return LOOKUP_INDEX
 
     record(FAIL, "Mirror built but LOOKUP JOIN still fails", rows)

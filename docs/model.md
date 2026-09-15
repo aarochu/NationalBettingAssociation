@@ -97,11 +97,11 @@ step, both teams' raw implied probabilities would sum to slightly more than
 1.0 (that gap is the house's edge), which would bias every comparison in the
 market's favor.
 
-**Don't assume the stored value is already de-vigged.** The
-`implied_probability` field in the sample docs is raw `1 / odds_decimal`:
-0.637 and 0.408, summing to 1.045. So the agent normalizes defensively before
-comparing, and normalizing twice is a no-op, so this stays correct once
-ingest starts de-vigging at write time. A quick tell that it's working: the
+**Normalize defensively anyway.** The sample docs originally stored raw
+`1 / odds_decimal` values summing to 1.045; ingest now de-vigs at write time
+and they sum to 1.0. The agent still normalizes before comparing, because
+normalizing an already-normalized pair is a no-op and a bookmaker row that
+slips through un-normalized would otherwise bias the delta silently. A quick tell that it's working: the
 two teams' deltas should be exact mirrors (+22.2pp / −22.2pp). If they aren't,
 the market side didn't sum to 1.0.
 

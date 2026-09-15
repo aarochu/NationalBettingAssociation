@@ -126,14 +126,6 @@ Elastic endpoint. What's left on each is pasting it in and watching it run.
       `METADATA _score | SORT _score DESC`, and the .esql file has an
       inverted-meaning second query that actually distinguishes a working
       embedding from a keyword fallback.
-- [x] **Found a narrative vocabulary gap.** The hand-written sample
-      narratives mention perimeter defense, three-point shooting and road
-      performance. `build_narrative()` generates none of those words — it
-      only ever describes overall quality, last-10 form, and home comfort.
-      So the Beat 3.5 demo prompt ("lockdown defense") matches on sample data
-      and will quietly stop matching on live data, degrading to a quality
-      ranking that still *looks* like it worked. Demo script now carries a
-      safe alternate prompt; the real fix is Aaron's, flagged below.
 - [x] Refined [docs/demo_script.md](demo_script.md) — Beat 3 now lists the
       expected output (Boston 83%, market 61%, +22pp) and the two failure
       modes to catch live.
@@ -149,14 +141,12 @@ Elastic endpoint. What's left on each is pasting it in and watching it run.
 - [ ] Build the three tools + agent in [agent_builder/setup.md](../agent_builder/setup.md) —
       paste the JSON blocks into Dev Tools, or build manually in the
       Agent Builder UI if the API paths don't match your Elastic version.
-- [ ] **Test `LOOKUP JOIN` first — expect it to fail on the first try.**
-      Root cause found: `LOOKUP JOIN` only targets an index created in
-      lookup mode, and `mappings/nba_team_stats.json` creates an ordinary
-      one. setup.md now has the `nba_team_stats_lookup` mirror + `_reindex`
-      fix, and a `get_all_stats_scores` fallback tool if the mirror also
-      doesn't work. **If you build the mirror, it goes stale** — re-reindex
-      after Aaron's live data lands or you'll score live odds against sample
-      stats, which looks fine and is wrong.
+- [x] **`LOOKUP JOIN` root cause found and now fixed upstream.** It only
+      targets lookup-mode indices, and the original mapping created an
+      ordinary one. `ingest/indices.py` now creates `nba_team_stats` in
+      lookup mode behind an alias, and Aaron confirmed the join works on
+      live data, so the mirror index I'd written is no longer needed and
+      has been removed from setup.md.
 - [ ] Test the `get_market_odds` `OR` param — some Agent Builder versions
       require every declared `?param` on every call, so "optional if the
       other is given" may not hold. Noted inline in setup.md with the fix.
@@ -192,11 +182,6 @@ until Aaron says live data is ready — the schema won't change underneath you.
 
 - [ ] Both: swap sample-data queries/demo runs for live data, re-verify the
       three demo prompts still make sense.
-- [ ] Raymond: if `nba_team_stats_lookup` was created for `LOOKUP JOIN`,
-      re-run the `_reindex` from [agent_builder/setup.md](../agent_builder/setup.md)
-      AFTER Aaron's live data lands. Skipping this scores live odds against
-      stale sample stats — it produces plausible-looking numbers, so nothing
-      will look broken.
 - [ ] Both: rehearse the full demo once together, timed to ~90 seconds.
 - [ ] Both: double check `.env` was never committed (`git log -p -- .env`
       should return nothing).

@@ -126,6 +126,14 @@ Elastic endpoint. What's left on each is pasting it in and watching it run.
       `METADATA _score | SORT _score DESC`, and the .esql file has an
       inverted-meaning second query that actually distinguishes a working
       embedding from a keyword fallback.
+- [x] **Closed a missed hard requirement.** sow.md requirement 4(a) is
+      "must demonstrate aggregations", and nothing in the project did —
+      team rollups run in Python via defaultdict, and there was no ES|QL
+      `STATS` or Query DSL `aggs` anywhere. Added
+      [esql/league_aggregates.esql](../esql/league_aggregates.esql) (league
+      context, measured home-court edge, grouped scoring tiers, per-game
+      bookmaker spread) and a `get_league_context` agent tool so an
+      aggregation actually appears in the demo.
 - [x] Refined [docs/demo_script.md](demo_script.md) — Beat 3 now lists the
       expected output (Boston 83%, market 61%, +22pp) and the two failure
       modes to catch live.
@@ -163,6 +171,12 @@ Elastic endpoint. What's left on each is pasting it in and watching it run.
       [agent_builder/setup.md](../agent_builder/setup.md) and confirm the
       agent routes play-style questions to it rather than guessing at a stat
       field.
+- [ ] Run [esql/league_aggregates.esql](../esql/league_aggregates.esql). Check
+      `avg_net_rating` comes back ~0.0 — if it doesn't, ingest has
+      double-counted or dropped games and every probability downstream is
+      suspect.
+- [ ] Build Tool 5 `get_league_context` and confirm the agent uses it to
+      frame numbers rather than quoting them bare.
 - [ ] Chat-test the four demo prompts in [agent_builder/setup.md](../agent_builder/setup.md)
       end to end against sample data.
 - [ ] Once Aaron flags that live data has landed, re-run the three demo

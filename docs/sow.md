@@ -36,7 +36,8 @@ a trained ML classifier.
 | 5 | Win-probability formula (ES|QL) | 🚧 drafted — [esql/win_probability.esql](../esql/win_probability.esql) |
 | 6 | Stats-vs-market comparison query | 🚧 drafted — [esql/matchup_comparison.esql](../esql/matchup_comparison.esql) |
 | 7 | Vector/semantic search: `narrative` semantic_text field + search query | 🚧 drafted — [mappings/nba_team_stats.json](../mappings/nba_team_stats.json), [esql/team_narrative_search.esql](../esql/team_narrative_search.esql) |
-| 8 | Agent Builder: 4 tools + 1 agent | 🚧 drafted — [agent_builder/setup.md](../agent_builder/setup.md) |
+| 8 | Agent Builder: 5 tools + 1 agent | 🚧 drafted — [agent_builder/setup.md](../agent_builder/setup.md) |
+| 8b | Aggregations (ES\|QL `STATS`) | 🚧 drafted — [esql/league_aggregates.esql](../esql/league_aggregates.esql), `get_league_context` tool |
 | 9 | Demo script | ✅ done — [docs/demo_script.md](demo_script.md) |
 | 10 | Model explanation doc | ✅ done — [docs/model.md](model.md) |
 
@@ -50,6 +51,10 @@ a trained ML classifier.
       probabilities.
 - [ ] The win-probability ES|QL query runs and returns a ranked list of
       teams.
+- [ ] An ES|QL `STATS` aggregation runs (hard requirement 4a). Until
+      `esql/league_aggregates.esql` was added, every rollup in the project
+      happened in Python and nothing aggregated inside Elasticsearch —
+      requirement 4a was silently unmet and not tracked anywhere.
 - [ ] The agent can answer "is there a value mismatch in [team A] vs
       [team B]?" by chaining `get_stats_prediction` + `get_market_odds` and
       stating a clear delta.

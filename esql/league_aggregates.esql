@@ -1,0 +1,98 @@
+// League-wide aggregations, computed in Elasticsearch.
+//
+// Why this file exists: docs/sow.md hard requirement 4(a) is "must
+// demonstrate aggregations". Team rollups are currently computed in Python
+// (`aggregate()` in ingest/fetch_nba_stats.py, using a defaultdict) and
+// written as pre-computed documents, so before this file the project had no
+// aggregation running inside Elasticsearch at all -- no ES|QL STATS, no
+// Query DSL aggs. These queries close that gap, and they're genuinely useful
+// rather than box-ticking: query C is what lets the agent say "12.2 net
+// rating is 3rd of 30" instead of quoting a bare number nobody can scale.
+//
+// Paste into Kibana Dev Tools Console (ES|QL tab).
+
+// ---------------------------------------------------------------------
+// A) League context for the model's inputs.
+//
+//    One row. Gives the agent the distribution its raw_score sits inside,
+//    so "net rating 12.2" can be described as elite rather than just
+//    reported. Also the fastest sanity check on ingest: if avg_net_rating
+//    isn't within a rounding error of 0.0, something is wrong -- every
+//    game's point differential is counted once for the winner and once
+//    against the loser, so the league has to average out to zero.
+// ---------------------------------------------------------------------
+
+FROM nba_team_stats
+| STATS
+    teams              = COUNT(*),
+    avg_net_rating     = ROUND(AVG(net_rating), 2),
+    best_net_rating    = ROUND(MAX(net_rating), 2),
+    worst_net_rating   = ROUND(MIN(net_rating), 2),
+    avg_points         = ROUND(AVG(points_per_game), 1),
+    avg_points_allowed = ROUND(AVG(points_allowed_per_game), 1)
+
+// ---------------------------------------------------------------------
+// B) Home-court advantage, measured rather than assumed.
+//
+//    docs/model.md hands the home team a flat +5 bonus that is explicitly
+//    "tuned by feel". This aggregates the actual league-wide home and away
+//    win rates, which is the empirical number that bonus is standing in
+//    for. If home_win_pct comes back near .540 (the historical NBA figure),
+//    the +5 is roughly defensible; if it's near .500 this season, say so in
+//    the pitch rather than defending a made-up constant.
+// ---------------------------------------------------------------------
+
+FROM nba_team_stats
+| STATS
+    avg_home_win_pct = ROUND(AVG(home_win_pct), 3),
+    avg_away_win_pct = ROUND(AVG(away_win_pct), 3)
+| EVAL home_court_edge = ROUND(avg_home_win_pct - avg_away_win_pct, 3)
+
+// ---------------------------------------------------------------------
+// C) Scoring tiers -- a grouped aggregation (STATS ... BY).
+//
+//    Buckets the league by net rating and counts each tier. This is the
+//    same league-relative logic build_narrative() applies in Python, done
+//    in ES instead, and it's a quick way to confirm the narrative buckets
+//    aren't lopsided: if 25 of 30 teams land in one tier, semantic search
+//    over narratives won't discriminate well and the vector demo suffers.
+// ---------------------------------------------------------------------
+
+FROM nba_team_stats
+| EVAL tier = CASE(
+    net_rating >= 5.0,  "1. contender",
+    net_rating >= 0.0,  "2. above .500",
+    net_rating >= -5.0, "3. below .500",
+                        "4. rebuilding"
+  )
+| STATS
+    teams          = COUNT(*),
+    avg_net_rating = ROUND(AVG(net_rating), 2),
+    avg_last_10_w  = ROUND(AVG(TO_DOUBLE(last_10_wins)), 1)
+  BY tier
+| SORT tier ASC
+
+// ---------------------------------------------------------------------
+// D) Market disagreement across bookmakers, aggregated per game.
+//
+//    Groups nba_odds by game and team and measures the spread between the
+//    most and least generous book. Useful in its own right -- a game where
+//    the books disagree with each other is a different, more interesting
+//    story than one where they agree and only our model dissents -- and it
+//    doubles as a data-quality check: a spread above ~0.10 usually means a
+//    stale or mis-parsed row rather than a real market split.
+// ---------------------------------------------------------------------
+
+FROM nba_odds
+| WHERE market == "h2h"
+| STATS
+    books        = COUNT(*),
+    avg_implied  = ROUND(AVG(implied_probability), 4),
+    min_implied  = ROUND(MIN(implied_probability), 4),
+    max_implied  = ROUND(MAX(implied_probability), 4)
+  BY game_id, team
+| EVAL book_spread = ROUND(max_implied - min_implied, 4)
+| WHERE books > 1
+| KEEP game_id, team, books, avg_implied, min_implied, max_implied, book_spread
+| SORT book_spread DESC
+| LIMIT 20

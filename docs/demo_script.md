@@ -21,6 +21,14 @@ Flash the Dev Tools console:
 > "This is our win-probability formula — net rating plus recent form plus a
 > home-court bump. It's a documented heuristic, not a black box."
 
+Then run the first query in `esql/league_aggregates.esql`:
+
+> "And this is ES|QL aggregating across the whole league, so the agent can
+> tell you a 12.2 net rating is the best of 30 rather than just handing you
+> the number."
+
+Quick credibility check before you present: `avg_net_rating` should be ~0.0.
+
 ## Beat 3 — the agent (40s)
 
 Switch to Kibana → Agents, ask live:

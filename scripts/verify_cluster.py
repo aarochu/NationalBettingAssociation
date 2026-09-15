@@ -24,6 +24,10 @@ What it checks, in order:
   6. The full value-mismatch query, with its numbers diffed against the
      reference model. This is the real test: it catches a formula that runs
      without erroring but computes the wrong thing.
+  7. Semantic search over the narrative field, run twice with opposite
+     meanings. Ranking by _score has to actually change between the two runs
+     -- if it doesn't, MATCH() is behaving like a keyword search and the
+     embedding isn't being used.
 
 Agent Builder tool registration is NOT covered. Those are Kibana APIs on a
 different host than the Elasticsearch endpoint, so paste those blocks from
@@ -130,6 +134,19 @@ def q_mismatches(stats_index):
         "| SORT game_id ASC, raw_score DESC"
     )
 
+
+Q_SEMANTIC = (
+    "FROM nba_team_stats METADATA _score "
+    '| WHERE MATCH(narrative, "{desc}") '
+    "| KEEP team, narrative, _score "
+    "| SORT _score DESC | LIMIT 10"
+)
+
+# Two descriptions that share vocabulary but mean opposite things. A working
+# embedding ranks different teams first for each; a keyword fallback returns
+# roughly the same order both times.
+SEMANTIC_POSITIVE = "lockdown defense and playing hot right now"
+SEMANTIC_NEGATIVE = "struggling badly and losing at home lately"
 
 LOOKUP_INDEX = "nba_team_stats_lookup"
 
@@ -282,6 +299,21 @@ def check_numbers(stats_index):
 
         a, b = teams
 
+        required = {"raw_score", "net_rating", "last_10_win_pct",
+                    "is_home", "implied_probability"}
+        for row in (a, b):
+            missing = required - row.keys()
+            if missing:
+                record(FAIL, f"{game_id}: query result is missing columns",
+                       f"absent: {', '.join(sorted(missing))}. The query ran "
+                       "but didn't return what the checks expect -- compare "
+                       "its KEEP clause against esql/value_mismatches.esql.")
+                break
+        else:
+            pass
+        if required - a.keys() or required - b.keys():
+            continue
+
         # The query returns last_10_win_pct rather than the raw win/loss
         # counts, so rebuild the expected score from the pct directly rather
         # than going through raw_score().
@@ -322,6 +354,72 @@ def check_numbers(stats_index):
 
     if checked:
         record(PASS, f"{checked} game(s) fully verified against reference_model.py")
+
+
+def check_semantic():
+    ok, pos = esql(Q_SEMANTIC.format(desc=SEMANTIC_POSITIVE))
+    if not ok:
+        if "semantic" in str(pos).lower() or "MATCH" in str(pos):
+            record(WARN, "ES|QL MATCH() on semantic_text not supported", pos)
+            record(WARN, "Use the Query DSL fallback",
+                   "See esql/team_narrative_search.esql, and register "
+                   "find_similar_teams as a 'query' type tool instead.")
+        else:
+            record(FAIL, "Semantic search query failed", pos)
+        return
+    if not pos:
+        record(WARN, "Semantic search returned no rows",
+               "Is the narrative field populated? Documents indexed before "
+               "the semantic_text mapping was applied are not embedded "
+               "retroactively -- reindex them.")
+        return
+
+    record(PASS, f"Semantic search returned {len(pos)} team(s)",
+           f"top: {pos[0]['team']} (_score {pos[0].get('_score')})")
+
+    ok, neg = esql(Q_SEMANTIC.format(desc=SEMANTIC_NEGATIVE))
+    if not ok or not neg:
+        record(WARN, "Could not run the inverted-meaning comparison", neg)
+        return
+
+    same_order = [r["team"] for r in pos] == [r["team"] for r in neg]
+    scores_moved = any(
+        abs((a.get("_score") or 0) - (b.get("_score") or 0)) > 0.01
+        for a, b in zip(pos, neg))
+
+    if same_order and not scores_moved:
+        record(FAIL, "Semantic search is not discriminating by meaning",
+               "Opposite descriptions returned the same order AND the same "
+               "scores. MATCH() is likely falling back to keyword behaviour. "
+               "Check GET nba_team_stats/_mapping shows narrative as "
+               "semantic_text, and that docs were indexed after that mapping.")
+    elif same_order:
+        record(WARN, "Same ranking for opposite descriptions, but scores moved",
+               "Plausible with only two sample teams. Re-check once there are "
+               "more teams in the index.")
+    else:
+        record(PASS, "Semantic ranking responds to meaning",
+               f"'{SEMANTIC_POSITIVE[:30]}...' -> {pos[0]['team']}; "
+               f"'{SEMANTIC_NEGATIVE[:30]}...' -> {neg[0]['team']}")
+
+
+def check_narrative_vocabulary():
+    """The sample narratives are richer than build_narrative() output."""
+    ok, rows = esql("FROM nba_team_stats | KEEP team, narrative | LIMIT 50")
+    if not ok or not rows:
+        return
+    blobs = " ".join((r.get("narrative") or "").lower() for r in rows)
+    missing = [w for w in ("defense", "shooting", "road") if w not in blobs]
+    if missing:
+        record(WARN,
+               f"Narratives never mention: {', '.join(missing)}",
+               "Play-style prompts about those themes have nothing to match. "
+               "If this is live data, build_narrative() needs widening -- see "
+               "the note flagged for Aaron in docs/todo.md. Until then use a "
+               "demo prompt inside the template's vocabulary (overall form, "
+               "hot/cold streak, home comfort).")
+    else:
+        record(PASS, "Narratives cover defense, shooting and road themes")
 
 
 def seed():
@@ -380,6 +478,8 @@ def main():
     stats_index = check_lookup_join()
     if stats_index:
         check_numbers(stats_index)
+    check_semantic()
+    check_narrative_vocabulary()
 
     failures = sum(1 for s, _, _ in results if s == FAIL)
     warnings = sum(1 for s, _, _ in results if s == WARN)

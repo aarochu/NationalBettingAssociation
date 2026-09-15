@@ -10,15 +10,43 @@
 // Example: searching "lockdown defense and playing hot right now" can match
 // a team whose narrative says "elite two-way team on a hot streak" even
 // though none of the query words appear verbatim.
+//
+// IMPORTANT -- sort by _score, not by a stat. An earlier version of this
+// query ended with `SORT net_rating DESC`, which silently discarded the
+// semantic ranking: the rows came back ordered by how good each team is,
+// not by how well it matched the description. That also made the obvious
+// test ("search for a hot defensive team, confirm Boston ranks above New
+// York") impossible to fail, since Boston has the higher net_rating and
+// would sort first even if semantic search returned nothing useful.
+// Requesting METADATA _score and sorting on it is what makes this a real
+// relevance query -- and what makes the test meaningful.
 
-FROM nba_team_stats
+FROM nba_team_stats METADATA _score
 | WHERE MATCH(narrative, "lockdown defense and playing hot right now")
-| KEEP team, narrative, net_rating, last_10_wins, last_10_losses
-| SORT net_rating DESC
+| KEEP team, narrative, _score, net_rating, last_10_wins, last_10_losses
+| SORT _score DESC
+| LIMIT 10
+
+// --- How to tell it actually worked ---
+//
+// Run it a second time with a description that inverts the meaning but
+// shares most of its vocabulary:
+//
+//   MATCH(narrative, "struggling defensively and losing at home lately")
+//
+// A real semantic match flips the order -- the team whose narrative
+// describes a rough stretch should now rank first, and the _score values
+// should differ noticeably between the two runs. If the order and scores
+// barely move between the two queries, MATCH() is falling back to keyword
+// behaviour and the embedding isn't being used. Check that the narrative
+// field really is mapped as semantic_text (GET nba_team_stats/_mapping) and
+// that the documents were indexed AFTER that mapping was applied -- docs
+// indexed against an older mapping are not retroactively embedded.
 
 // --- Fallback (Query DSL) ---
 // If your Elastic version's ES|QL MATCH() doesn't yet support semantic_text
-// fields, run this equivalent semantic query in Dev Tools instead:
+// fields, run this equivalent semantic query in Dev Tools instead. It sorts
+// by relevance by default, so there's nothing extra to add:
 //
 // GET nba_team_stats/_search
 // {

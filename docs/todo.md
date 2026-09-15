@@ -117,6 +117,23 @@ Elastic endpoint. What's left on each is pasting it in and watching it run.
       scaled logistic → de-vig), a worked example with the expected numbers,
       a self-check ("if you computed >97%, you dropped the divisor"), and
       firmer no-betting-advice framing.
+- [x] **Fixed the semantic search ranking.** `find_similar_teams` and
+      `team_narrative_search.esql` both ended with `SORT net_rating DESC`,
+      which discards the relevance ordering — the tool returned teams by how
+      good they are, not how well they matched the description. It also made
+      the suggested test unfalsifiable: Boston outranks New York on
+      `net_rating` whether or not semantic search did anything. Now uses
+      `METADATA _score | SORT _score DESC`, and the .esql file has an
+      inverted-meaning second query that actually distinguishes a working
+      embedding from a keyword fallback.
+- [x] **Found a narrative vocabulary gap.** The hand-written sample
+      narratives mention perimeter defense, three-point shooting and road
+      performance. `build_narrative()` generates none of those words — it
+      only ever describes overall quality, last-10 form, and home comfort.
+      So the Beat 3.5 demo prompt ("lockdown defense") matches on sample data
+      and will quietly stop matching on live data, degrading to a quality
+      ranking that still *looks* like it worked. Demo script now carries a
+      safe alternate prompt; the real fix is Aaron's, flagged below.
 - [x] Refined [docs/demo_script.md](demo_script.md) — Beat 3 now lists the
       expected output (Boston 83%, market 61%, +22pp) and the two failure
       modes to catch live.

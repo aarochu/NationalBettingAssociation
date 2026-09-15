@@ -168,13 +168,27 @@ PUT kbn:/api/agent_builder/tools/find_similar_teams
   "type": "esql",
   "description": "Semantic search for NBA teams matching a natural-language play-style or form description, e.g. 'lockdown defense on a hot streak' or 'struggling on the road with cold shooting'. Use this when the user describes a vibe/style rather than naming a specific stat.",
   "configuration": {
-    "query": "FROM nba_team_stats | WHERE MATCH(narrative, ?description) | KEEP team, narrative, net_rating, last_10_wins, last_10_losses | SORT net_rating DESC",
+    "query": "FROM nba_team_stats METADATA _score | WHERE MATCH(narrative, ?description) | KEEP team, narrative, _score, net_rating, last_10_wins, last_10_losses | SORT _score DESC | LIMIT 10",
     "params": {
       "description": { "type": "keyword", "description": "Natural-language description of the play style or form to search for." }
     }
   }
 }
 ```
+
+> **Sort by `_score`, not by a stat.** This query originally ended with
+> `SORT net_rating DESC`, which threw away the semantic ranking — the tool
+> would return teams ordered by how *good* they are rather than how well they
+> match the description, which defeats the point of the tool. Worse, it made
+> the natural test ("search for a hot defensive team, check Boston ranks
+> above New York") impossible to fail, since Boston sorts first on
+> `net_rating` regardless. `METADATA _score` + `SORT _score DESC` is what
+> makes this an actual relevance query.
+>
+> The agent instructions tell it to preserve this ordering and not re-sort.
+> Worth checking in the thinking trace: a team can match "scrappy defensive
+> team having a rough month" well while being near the bottom of the league,
+> and that's the correct answer, not a bug.
 
 > If `MATCH()` on a `semantic_text` field isn't supported on your Elastic
 > version's ES|QL yet, fall back to a `query` (Query DSL) type tool using the

@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NationalBettingAssociation</title>
+  <meta name="description" content="NBA win probabilities from a stats model, lined up against de-vigged sportsbook odds. Runs on Elasticsearch and Kibana Agent Builder.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏀</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="/static/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js" defer></script>
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <nav class="nav">
+    <div class="nav-top wrap">
+      <a class="brand" href="#markets" aria-label="NationalBettingAssociation home">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+          <circle cx="12" cy="12" r="9"/>
+          <path d="M3 12h18M12 3v18M5.7 5.7c3.1 3.1 3.1 9.5 0 12.6M18.3 5.7c-3.1 3.1-3.1 9.5 0 12.6"/>
+        </svg>
+        <span class="brand-name">NationalBettingAssociation</span>
+        <span class="badge">Elastic</span>
+      </a>
+
+      <div class="search" role="search">
+        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>
+        </svg>
+        <input id="search" type="search" placeholder="Search teams by play style" autocomplete="off" aria-label="Search teams by play style">
+        <kbd>/</kbd>
+        <div class="search-results" id="search-results" hidden></div>
+      </div>
+
+      <div class="nav-actions">
+        <span class="status" id="status" data-tone="idle"><i></i><span>Connecting</span></span>
+        <button class="btn-primary" id="open-chat" type="button">Ask the analyst</button>
+      </div>
+    </div>
+
+    <div class="tabs wrap" id="tabs">
+      <a href="#markets" class="active">Markets</a>
+      <a href="#gaps">Value gaps</a>
+      <a href="#rankings">Power rankings</a>
+      <a href="#style">Play style</a>
+      <a href="#hood">Under the hood</a>
+      <span class="tab-ink" id="tab-ink" aria-hidden="true"></span>
+    </div>
+  </nav>
+
+  <main class="wrap">
+    <section id="markets" class="hero-section" aria-label="Featured value gaps">
+      <div class="hero card" id="hero">
+        <div class="hero-arrows">
+          <button class="icon-btn" id="hero-prev" type="button" aria-label="Previous game">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
+          </button>
+          <button class="icon-btn" id="hero-next" type="button" aria-label="Next game">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>
+          </button>
+        </div>
+        <div class="hero-body" id="hero-body">
+          <div class="hero-left">
+            <div class="sk" style="width:38%;height:14px"></div>
+            <div class="sk" style="width:72%;height:34px;margin:14px 0 26px"></div>
+            <div class="sk" style="height:44px;margin-bottom:10px"></div>
+            <div class="sk" style="height:44px;margin-bottom:22px"></div>
+            <div class="sk" style="height:72px"></div>
+          </div>
+          <div class="hero-right"><div class="sk" style="height:260px"></div></div>
+        </div>
+      </div>
+      <div class="hero-dots" id="hero-dots"></div>
+    </section>
+
+    <section class="stats" id="stats" aria-label="League and odds numbers">
+      <div class="tile card"><div class="sk" style="height:56px"></div></div>
+      <div class="tile card"><div class="sk" style="height:56px"></div></div>
+      <div class="tile card"><div class="sk" style="height:56px"></div></div>
+      <div class="tile card"><div class="sk" style="height:56px"></div></div>
+      <div class="tile card"><div class="sk" style="height:56px"></div></div>
+    </section>
+
+    <section id="gaps">
+      <header class="section-head">
+        <div>
+          <h2>Biggest gaps</h2>
+          <p>Where the stats model and the books disagree most. Anything 8 points or more gets flagged.</p>
+        </div>
+      </header>
+      <div class="grid" id="gap-grid"></div>
+    </section>
+
+    <section id="all">
+      <header class="section-head">
+        <div>
+          <h2>Every priced game</h2>
+          <p id="all-count">Loading odds</p>
+        </div>
+        <div class="controls">
+          <div class="seg" id="sort" role="group" aria-label="Sort games">
+            <button type="button" data-sort="gap" class="on">Biggest gap</button>
+            <button type="button" data-sort="time">Tip-off</button>
+          </div>
+          <button type="button" class="toggle" id="flag-toggle" aria-pressed="false">Flagged only</button>
+        </div>
+      </header>
+      <div class="grid" id="all-grid"></div>
+    </section>
+
+    <section id="rankings">
+      <header class="section-head">
+        <div>
+          <h2>Power rankings</h2>
+          <p>The model's raw score before home court: half the net rating, plus 30 times the last-10 win rate.</p>
+        </div>
+      </header>
+      <div class="card table-card">
+        <div class="table-wrap">
+          <table class="rank-table">
+            <thead>
+              <tr><th>#</th><th>Team</th><th class="num">Record</th><th>Net rating</th><th>Last 10</th><th class="num">Score</th></tr>
+            </thead>
+            <tbody id="rankings-body">
+              <tr><td colspan="6"><div class="sk" style="height:220px"></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="style">
+      <header class="section-head">
+        <div>
+          <h2>Search by play style</h2>
+          <p>Describe a team in plain words. It's semantic search over each team's narrative, so it matches meaning instead of exact words.</p>
+        </div>
+        <span class="style-meta" id="style-meta"></span>
+      </header>
+      <form class="style-box" id="style-form">
+        <input id="style-q" type="text" placeholder="e.g. lockdown defense on a hot streak" autocomplete="off" aria-label="Describe a play style">
+        <button class="btn-primary" type="submit">Search</button>
+      </form>
+      <div class="chips" id="style-chips"></div>
+      <div class="style-results" id="style-results"></div>
+    </section>
+
+    <section id="hood">
+      <header class="section-head">
+        <div>
+          <h2>Under the hood</h2>
+          <p>Every query this page sent to Elasticsearch, with timings. Paste any of them into Dev Tools and you'll get the same rows.</p>
+        </div>
+      </header>
+      <div class="hood-grid" id="hood-grid"></div>
+    </section>
+  </main>
+
+  <footer class="footer wrap">
+    <p><b>Analysis only, not betting advice.</b> The model is a hand-weighted formula over net rating, last-10 form and home court. It knows nothing about injuries or rest days.</p>
+    <p>Stats from stats.nba.com, odds from The Odds API. Search, aggregations and the analyst run on Elastic.</p>
+  </footer>
+
+  <aside class="chat" id="chat" aria-hidden="true" aria-label="Analyst chat">
+    <header class="chat-head">
+      <span class="avatar" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3v18"/></svg>
+      </span>
+      <div class="chat-title">
+        <b>Analyst</b>
+        <span>Kibana Agent Builder · <code id="agent-id">nba_value_finder</code></span>
+      </div>
+      <button class="icon-btn" id="chat-new" type="button" title="New conversation" aria-label="New conversation">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+      <button class="icon-btn" id="chat-close" type="button" aria-label="Close chat">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </header>
+    <div class="chat-log" id="chat-log">
+      <div class="msg msg-agent intro">
+        <p>Ask about any priced game. I run ES|QL tools in Kibana, and every answer lists which ones fired and what they returned.</p>
+        <p class="muted">I'll explain a gap. I won't tell you what to bet.</p>
+      </div>
+    </div>
+    <div class="chat-suggest" id="chat-suggestions"></div>
+    <form class="chat-form" id="chat-form">
+      <textarea id="chat-input" rows="1" placeholder="Ask about a game, a team, or the model" aria-label="Message"></textarea>
+      <button class="btn-primary send" id="chat-send" type="submit" aria-label="Send">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </button>
+    </form>
+  </aside>
+
+  <div class="scrim" id="scrim" hidden></div>
+  <div class="modal" id="modal" hidden>
+    <div class="modal-panel" id="modal-panel" role="dialog" aria-modal="true" aria-labelledby="modal-title"></div>
+  </div>
+</body>
+</html>

@@ -85,6 +85,32 @@ Which games tonight have the biggest gap between the market and the stats model?
 > Elastic Cloud with zero external API keys for the AI side thanks to
 > EIS."
 
+## Running the same demo from the web app
+
+Start it with `./app/run.sh` and open http://127.0.0.1:8420. Every beat above
+fits in that one tab, which is easier on a projector than flipping between Dev
+Tools and Kibana.
+
+- **Beat 2:** scroll to **Under the hood**. The market, rankings and league
+  context cards show the exact ES|QL each part of the page ran, with timings,
+  so there's no console to fumble with.
+- **Beat 3:** hit **Ask the analyst** on the hero card. The drawer streams the
+  agent, so each tool call appears as it starts and fills in its ES|QL and row
+  count when it returns. Open one up if a judge asks what it sent.
+- **Beat 3.5:** type "lockdown defense on a hot streak" into the nav search.
+  Results come from the `semantic_text` narratives, ranked by `_score`.
+- **Beat 4:** the hero carousel is already the biggest-gap ranking. Point at the
+  chart: orange dots are sportsbooks with the vig removed, the lilac line is the
+  model, and the shaded band between them is the gap.
+
+If you ask the whole-slate question at all, ask it early. It took 220s over the
+blocking API. Streaming gets the first tool call on screen within a few seconds,
+but the full answer still takes minutes.
+
+The Beat 3 numbers above (Boston 83%, +22pp) come from `sample_docs.md`, not
+the live indices. For live games, open **Show the math** on a card; it runs the
+same formula the agent uses, so you know the right answer before you ask.
+
 ## If something breaks live
 
 Have `mappings/sample_docs.md` data still indexed as a fallback — the demo

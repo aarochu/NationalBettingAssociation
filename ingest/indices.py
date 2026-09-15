@@ -63,6 +63,7 @@ INDICES = {
                 "away_score": {"type": "integer"},
                 "status": {"type": "keyword"},
                 "winner": {"type": "keyword"},
+                "neutral_site": {"type": "boolean"},
             }
         },
     },
@@ -86,8 +87,14 @@ INDICES = {
 
 
 def ensure_index(es: Elasticsearch, alias: str) -> None:
-    """Create `<alias>_<VERSION>` with its alias if the alias doesn't exist."""
+    """Create `<alias>_<VERSION>` with its alias if the alias doesn't exist.
+
+    If it already exists, push the current mapping so newly added fields are
+    picked up. Adding fields is allowed in place; changing an existing field's
+    type fails here and needs a new VERSION + alias swap instead.
+    """
     if es.indices.exists_alias(name=alias):
+        es.indices.put_mapping(index=alias, properties=INDICES[alias]["mappings"]["properties"])
         return
     if es.indices.exists(index=alias):
         raise RuntimeError(

@@ -59,9 +59,12 @@ def aggregate(games: list[dict]) -> dict[str, dict]:
             a["results"].append(won)
             a["points_for"] += pts_for
             a["points_against"] += pts_against
-            side = "home" if is_home else "away"
-            a[f"{side}_g"] += 1
-            a[f"{side}_w"] += won
+            # Neutral-site games count toward the record but not home/away
+            # splits, matching the official NBA standings.
+            if not g.get("neutral_site"):
+                side = "home" if is_home else "away"
+                a[f"{side}_g"] += 1
+                a[f"{side}_w"] += won
 
     stats = {}
     for team, a in acc.items():

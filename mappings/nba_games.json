@@ -15,7 +15,8 @@ PUT nba_games_v1
       "home_score":   { "type": "integer" },
       "away_score":   { "type": "integer" },
       "status":       { "type": "keyword" },
-      "winner":       { "type": "keyword" }
+      "winner":       { "type": "keyword" },
+      "neutral_site": { "type": "boolean" }
     }
   }
 }

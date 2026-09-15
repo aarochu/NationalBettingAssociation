@@ -43,9 +43,11 @@ def to_records(rows: list[dict]) -> list[dict]:
             continue
         # MATCHUP is "BOS vs. NYK" for the home team, "NYK @ BOS" for away.
         # Neutral-site games (international, NBA Cup knockouts) list BOTH
-        # teams with "@"; treat the first row's opponent as the home team.
+        # teams with "@"; flag them and pick a side arbitrarily so the record
+        # still has a home/away team. They're excluded from home/away splits.
         home = next((r for r in pair if " vs. " in r["MATCHUP"]), None)
-        if home is None:
+        neutral_site = home is None
+        if neutral_site:
             home = pair[1]
         away = pair[0] if home is pair[1] else pair[1]
         home_team = canonical_team(home["TEAM_NAME"])
@@ -61,6 +63,7 @@ def to_records(rows: list[dict]) -> list[dict]:
                 "away_score": away["PTS"],
                 "status": "final",
                 "winner": home_team if home["WL"] == "W" else away_team,
+                "neutral_site": neutral_site,
             }
         )
     return records

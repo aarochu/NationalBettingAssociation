@@ -31,7 +31,9 @@ mappings already scaffolded.
 - [x] ~~Get a balldontlie.io API key~~ — balldontlie now returns 401 without
       a key, so `fetch_nba_games.py` uses stats.nba.com via `nba_api` instead
       (free, no key). All 1230 games of the 2025-26 regular season, including
-      the 5 neutral-site games that list both teams as away.
+      the 5 neutral-site games that list both teams as away. Those are flagged
+      `neutral_site` and left out of home/away splits, matching the official
+      standings.
 - [x] The Odds API key works — `fetch_odds.py` indexed 190 records (41 events,
       5 bookmakers). Events are 2026-27 season games starting 2026-10-20.
       Odds API names are canonical for `team`. `ingest/teams.py` maps

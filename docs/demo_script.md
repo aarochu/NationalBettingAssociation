@@ -21,6 +21,14 @@ Flash the Dev Tools console:
 > "This is our win-probability formula — net rating plus recent form plus a
 > home-court bump. It's a documented heuristic, not a black box."
 
+Then run the first query in `esql/league_aggregates.esql`:
+
+> "And this is ES|QL aggregating across the whole league, so the agent can
+> tell you a 12.2 net rating is the best of 30 rather than just handing you
+> the number."
+
+Quick credibility check before you present: `avg_net_rating` should be ~0.0.
+
 ## Beat 3 — the agent (40s)
 
 Switch to Kibana → Agents, ask live:
@@ -36,6 +44,16 @@ explaining it in plain language.
 > "Watch it call our custom tools in sequence — pulling the stats prediction,
 > pulling the market odds, then reasoning over both to explain the gap."
 
+**Know the right answer before you ask.** On sample data this should come back
+as roughly **Boston 83%, market 61%, delta +22pp**. Run
+`python3 scripts/reference_model.py` right before you go on to confirm.
+
+Two failure modes to catch in the moment:
+- **Boston at ~100%** — the agent dropped the `/10` scale divisor. Don't
+  argue with it on stage; move to Beat 4 and fix the instructions after.
+- **Deltas that aren't mirrors** (e.g. +22 and −19) — it skipped the de-vig
+  step. Minor enough to talk over if you notice it.
+
 ## Beat 3.5 — vector search (15s)
 
 Ask:
@@ -46,6 +64,7 @@ Which teams are playing lockdown defense and on a hot streak right now?
 
 > "That's semantic search — each team has a narrative field embedded by EIS,
 > so it matches on meaning. None of those words have to appear in the data."
+
 
 ## Beat 4 — the payoff (15s)
 
@@ -71,3 +90,10 @@ Which games tonight have the biggest gap between the market and the stats model?
 Have `mappings/sample_docs.md` data still indexed as a fallback — the demo
 prompts work identically against sample data, so a live-API hiccup doesn't
 kill the demo.
+
+If Beat 4 errors, `find_value_mismatches` is the likely culprit. Fall back to
+asking about a second named matchup, which only uses the two single-team
+tools. `ingest/indices.py` now creates `nba_team_stats` in lookup mode so the
+join should work, but the no-join fallback tool is in
+[../agent_builder/setup.md](../agent_builder/setup.md) if it doesn't.
+

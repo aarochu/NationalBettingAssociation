@@ -1,0 +1,61 @@
+// Every team with both odds and stats, across every upcoming game.
+// This is the query behind the demo prompt "which games tonight have the
+// biggest gap between the market and the stats model?"
+//
+// It's the same body as the find_value_mismatches tool in
+// agent_builder/setup.md -- kept here as a standalone file so it can be run
+// and debugged in Dev Tools without going through Agent Builder. If you edit
+// one, edit both.
+//
+// Returns one row per team per game. The agent pairs the rows up by game_id,
+// runs the softmax over each pair's raw_score, de-vigs the pair's
+// implied_probability, and ranks by |delta|.
+
+// ---------------------------------------------------------------------
+// Primary version -- requires nba_team_stats in lookup index mode.
+// ---------------------------------------------------------------------
+
+FROM nba_odds
+| WHERE market == "h2h"
+| LOOKUP JOIN nba_team_stats ON team
+// A team in nba_odds with no matching nba_team_stats row comes back with
+// null stats and would produce a garbage score. Drop it and say so, rather
+// than scoring it as if net_rating were 0.
+| WHERE net_rating IS NOT NULL
+| EVAL last_10_games = last_10_wins + last_10_losses
+| EVAL last_10_win_pct = CASE(
+    last_10_games == 0,
+    0.5,
+    TO_DOUBLE(last_10_wins) / TO_DOUBLE(last_10_games)
+  )
+| EVAL is_home = team == home_team
+| EVAL raw_score = ROUND(
+    (net_rating * 0.5) + (last_10_win_pct * 30) + CASE(is_home, 5.0, 0.0), 2
+  )
+| KEEP game_id, date, home_team, away_team, team, is_home, bookmaker, odds_decimal, implied_probability, net_rating, last_10_win_pct, raw_score
+| SORT date ASC, game_id ASC, raw_score DESC
+
+// ---------------------------------------------------------------------
+// Fallback -- no LOOKUP JOIN. Run this instead if the above errors.
+//
+// Doesn't join at all: it returns the stats side for every team, and you run
+// query B in esql/matchup_comparison.esql (or the get_market_odds tool) for
+// the market side, then pair them up by team name outside ES|QL. Less
+// elegant, works on every tier.
+//
+// The home-court bonus is NOT applied here -- without the odds documents
+// there is no home_team field to compare against, so the agent has to add
+// +5 to whichever team it knows is at home. The agent instructions in
+// agent_builder/setup.md cover this.
+// ---------------------------------------------------------------------
+
+// FROM nba_team_stats
+// | EVAL last_10_games = last_10_wins + last_10_losses
+// | EVAL last_10_win_pct = CASE(
+//     last_10_games == 0,
+//     0.5,
+//     TO_DOUBLE(last_10_wins) / TO_DOUBLE(last_10_games)
+//   )
+// | EVAL raw_score_neutral = ROUND((net_rating * 0.5) + (last_10_win_pct * 30), 2)
+// | KEEP team, team_abbreviation, net_rating, last_10_win_pct, raw_score_neutral
+// | SORT raw_score_neutral DESC

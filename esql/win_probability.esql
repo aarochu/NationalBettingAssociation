@@ -1,22 +1,38 @@
-// Stats-based win probability formula.
+// Stats-based win probability formula -- league-wide ranking.
 // Paste into Kibana Dev Tools Console (or the ES|QL tab) to run.
 //
 // This is a transparent, documented heuristic -- see docs/model.md for the
 // reasoning behind the weights. It is NOT a trained ML model.
 //
-// Formula (before normalization to 0-100%):
 //   raw_score = (net_rating * 0.5)
 //             + (last_10_win_pct * 30)
 //             + (home_court_bonus)   // +5 if this is the home team, else 0
 //
-// The two teams' raw_scores in a matchup are then converted to a probability
-// via a simple logistic-style normalization done in esql/matchup_comparison.esql
-// (ES|QL doesn't have a built-in logistic function, so the final
-// normalization step happens either in a second ES|QL pass or in the Agent
-// Builder tool's post-processing -- see agent_builder/tools/get_stats_prediction.json).
+// This query deliberately omits the home-court bonus: it ranks teams in the
+// abstract, with no game attached, so there is no home team to give it to.
+// The bonus is applied in esql/matchup_comparison.esql and
+// esql/value_mismatches.esql, both of which join against a specific game.
+// Expect the numbers here to sit ~5 points below the ones the agent quotes
+// for a home team -- that gap is the bonus, not a bug.
+//
+// raw_score is not a probability and is not on a 0-100 scale. Converting a
+// PAIR of raw_scores into a probability happens in the agent's reasoning
+// step (agent_builder/setup.md), because ES|QL has no exp(). Run
+// scripts/reference_model.py to see the expected conversion for the sample
+// docs.
 
 FROM nba_team_stats
-| EVAL last_10_win_pct = TO_DOUBLE(last_10_wins) / (TO_DOUBLE(last_10_wins) + TO_DOUBLE(last_10_losses))
+// Guard the division: a team with no last-10 record (preseason, or a
+// backfill gap in ingest) would otherwise divide by zero and land at null,
+// silently dropping out of the ranking. 0.5 means "no information, treat as
+// average" -- 0.0 would punish the team for a data problem.
+| EVAL last_10_games = last_10_wins + last_10_losses
+| EVAL last_10_win_pct = CASE(
+    last_10_games == 0,
+    0.5,
+    TO_DOUBLE(last_10_wins) / TO_DOUBLE(last_10_games)
+  )
 | EVAL raw_score = (net_rating * 0.5) + (last_10_win_pct * 30)
-| KEEP team, team_abbreviation, season, net_rating, last_10_win_pct, raw_score
+| EVAL raw_score = ROUND(raw_score, 2)
+| KEEP team, team_abbreviation, season, net_rating, last_10_wins, last_10_losses, last_10_win_pct, raw_score
 | SORT raw_score DESC

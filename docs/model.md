@@ -37,13 +37,55 @@ probability conversion happens in the Agent Builder agent's reasoning step
 (see the agent's `instructions` in [agent_builder/setup.md](../agent_builder/setup.md)):
 
 ```
-P(team_a wins) = exp(raw_score_a) / (exp(raw_score_a) + exp(raw_score_b))
+P(team_a wins) = 1 / (1 + exp(-(raw_score_a - raw_score_b) / SCALE))
 P(team_b wins) = 1 - P(team_a wins)
+
+SCALE = 10
 ```
 
-This is a standard softmax over two scores — it guarantees both
-probabilities sum to 1.0 and rewards a larger score gap with a more lopsided
-probability, without needing an arbitrary scale.
+This is the two-class softmax `exp(a) / (exp(a) + exp(b))`, rewritten in the
+equivalent logistic form so the scale divisor is visible and tunable. Both
+forms guarantee the probabilities sum to 1.0.
+
+### Calibrating the conversion
+
+**The `SCALE` divisor is not optional.** The unscaled softmax — the version
+this doc originally specified — saturates on real inputs. Worked through on
+the sample BOS/NYK matchup:
+
+| | net_rating × 0.5 | form × 30 | home | raw_score |
+|---|---|---|---|---|
+| Boston (home) | 6.10 | 24.00 | +5 | **35.10** |
+| New York | 1.15 | 18.00 | 0 | **19.15** |
+
+A gap of 15.95 through an unscaled softmax gives Boston **100.0%**. Not
+99-point-something — 100.0% to four decimal places. Every game would read as
+a gigantic mismatch against the market, the deltas would all be meaningless,
+and the demo would be visibly broken the first time anyone looked at a number.
+
+The cause is a units mismatch. `raw_score` lives on a scale where one "point"
+is a fraction of a point of net rating, but `exp()` treats a gap of 16 as
+astronomically decisive. Dividing the gap by `SCALE` puts it back in a range
+where the logistic behaves:
+
+| SCALE | P(Boston) |
+|---|---|
+| 1 (unscaled) | 100.0% |
+| 5 | 96.0% |
+| 6.5 | 92.1% |
+| **10** | **83.1%** |
+| 15 | 74.3% |
+| 20 | 68.9% |
+
+`SCALE = 10` is the pick. It's a judgment call, not a fit: it keeps a strong
+favorite in the 80s rather than pinned at 100%, and leaves room for a genuine
+blowout matchup to reach the 90s. For reference, NBA point spreads convert to
+win probability at roughly `spread / 6.5` — our divisor is larger because
+`raw_score` is inflated relative to points by the `× 30` recency term.
+
+Like the weights, this is tunable live. `scripts/reference_model.py` prints
+the table above on every run, so if the demo numbers look too confident or too
+timid, change one constant and re-run.
 
 ## Comparing against the market
 
@@ -54,6 +96,14 @@ normalizing both teams' implied probabilities to sum to 1.0 — see
 step, both teams' raw implied probabilities would sum to slightly more than
 1.0 (that gap is the house's edge), which would bias every comparison in the
 market's favor.
+
+**Normalize defensively anyway.** The sample docs originally stored raw
+`1 / odds_decimal` values summing to 1.045; ingest now de-vigs at write time
+and they sum to 1.0. The agent still normalizes before comparing, because
+normalizing an already-normalized pair is a no-op and a bookmaker row that
+slips through un-normalized would otherwise bias the delta silently. A quick tell that it's working: the
+two teams' deltas should be exact mirrors (+22.2pp / −22.2pp). If they aren't,
+the market side didn't sum to 1.0.
 
 The **value gap** for a team is simply:
 

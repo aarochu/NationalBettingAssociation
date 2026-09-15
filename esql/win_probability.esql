@@ -1,0 +1,22 @@
+// Stats-based win probability formula.
+// Paste into Kibana Dev Tools Console (or the ES|QL tab) to run.
+//
+// This is a transparent, documented heuristic -- see docs/model.md for the
+// reasoning behind the weights. It is NOT a trained ML model.
+//
+// Formula (before normalization to 0-100%):
+//   raw_score = (net_rating * 0.5)
+//             + (last_10_win_pct * 30)
+//             + (home_court_bonus)   // +5 if this is the home team, else 0
+//
+// The two teams' raw_scores in a matchup are then converted to a probability
+// via a simple logistic-style normalization done in esql/matchup_comparison.esql
+// (ES|QL doesn't have a built-in logistic function, so the final
+// normalization step happens either in a second ES|QL pass or in the Agent
+// Builder tool's post-processing -- see agent_builder/tools/get_stats_prediction.json).
+
+FROM nba_team_stats
+| EVAL last_10_win_pct = TO_DOUBLE(last_10_wins) / (TO_DOUBLE(last_10_wins) + TO_DOUBLE(last_10_losses))
+| EVAL raw_score = (net_rating * 0.5) + (last_10_win_pct * 30)
+| KEEP team, team_abbreviation, season, net_rating, last_10_win_pct, raw_score
+| SORT raw_score DESC

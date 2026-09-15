@@ -1,0 +1,25 @@
+// Stats-vs-market comparison for a single matchup.
+// Replace $HOME_TEAM / $AWAY_TEAM / $GAME_ID before running in Dev Tools
+// Console (ES|QL doesn't support bind params from the console the way Query
+// DSL does -- swap the literals directly, or pass them from the Agent
+// Builder tool config which does support parameters).
+//
+// Step 1: pull both teams' raw_score from nba_team_stats
+// Step 2: pull the market implied_probability for both teams from nba_odds
+// Step 3: the actual raw_score -> probability conversion and delta
+//         calculation happens in the tool's post-processing step (a simple
+//         softmax over the two raw_scores) -- see
+//         agent_builder/tools/find_value_mismatches.json for the exact math.
+
+FROM nba_team_stats
+| WHERE team IN ("$HOME_TEAM", "$AWAY_TEAM")
+| EVAL last_10_win_pct = TO_DOUBLE(last_10_wins) / (TO_DOUBLE(last_10_wins) + TO_DOUBLE(last_10_losses))
+| EVAL raw_score = (net_rating * 0.5) + (last_10_win_pct * 30)
+| KEEP team, raw_score
+
+// then, separately:
+
+FROM nba_odds
+| WHERE game_id == "$GAME_ID"
+| KEEP team, bookmaker, odds_decimal, implied_probability
+| SORT team

@@ -1,0 +1,17 @@
+// Paste into Kibana Dev Tools Console and run.
+PUT nba_games
+{
+  "mappings": {
+    "properties": {
+      "game_id":      { "type": "keyword" },
+      "date":         { "type": "date" },
+      "season":       { "type": "keyword" },
+      "home_team":    { "type": "keyword" },
+      "away_team":    { "type": "keyword" },
+      "home_score":   { "type": "integer" },
+      "away_score":   { "type": "integer" },
+      "status":       { "type": "keyword" },
+      "winner":       { "type": "keyword" }
+    }
+  }
+}

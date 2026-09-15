@@ -1,0 +1,18 @@
+// Paste into Kibana Dev Tools Console and run.
+PUT nba_odds
+{
+  "mappings": {
+    "properties": {
+      "game_id":               { "type": "keyword" },
+      "date":                  { "type": "date" },
+      "home_team":             { "type": "keyword" },
+      "away_team":             { "type": "keyword" },
+      "bookmaker":             { "type": "keyword" },
+      "market":                { "type": "keyword" },
+      "team":                  { "type": "keyword" },
+      "odds_decimal":          { "type": "float" },
+      "implied_probability":   { "type": "float" },
+      "fetched_at":            { "type": "date" }
+    }
+  }
+}

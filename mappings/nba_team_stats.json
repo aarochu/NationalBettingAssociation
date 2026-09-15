@@ -1,0 +1,23 @@
+// Paste into Kibana Dev Tools Console and run.
+PUT nba_team_stats
+{
+  "mappings": {
+    "properties": {
+      "team_id":                  { "type": "keyword" },
+      "team":                     { "type": "keyword" },
+      "team_abbreviation":        { "type": "keyword" },
+      "season":                   { "type": "keyword" },
+      "games_played":             { "type": "integer" },
+      "wins":                     { "type": "integer" },
+      "losses":                   { "type": "integer" },
+      "points_per_game":          { "type": "float" },
+      "points_allowed_per_game":  { "type": "float" },
+      "net_rating":               { "type": "float" },
+      "home_win_pct":             { "type": "float" },
+      "away_win_pct":             { "type": "float" },
+      "last_10_wins":             { "type": "integer" },
+      "last_10_losses":           { "type": "integer" },
+      "last_updated":             { "type": "date" }
+    }
+  }
+}

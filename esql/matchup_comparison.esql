@@ -1,25 +1,82 @@
-// Stats-vs-market comparison for a single matchup.
-// Replace $HOME_TEAM / $AWAY_TEAM / $GAME_ID before running in Dev Tools
-// Console (ES|QL doesn't support bind params from the console the way Query
-// DSL does -- swap the literals directly, or pass them from the Agent
-// Builder tool config which does support parameters).
+// Stats-vs-market comparison for a SINGLE matchup.
 //
-// Step 1: pull both teams' raw_score from nba_team_stats
-// Step 2: pull the market implied_probability for both teams from nba_odds
-// Step 3: the actual raw_score -> probability conversion and delta
-//         calculation happens in the tool's post-processing step (a simple
-//         softmax over the two raw_scores) -- see
-//         agent_builder/tools/find_value_mismatches.json for the exact math.
+// Replace $GAME_ID below before running in Dev Tools Console. ES|QL doesn't
+// support bind params from the console the way Query DSL does -- swap the
+// literal directly. The Agent Builder tool config DOES support ?params; see
+// agent_builder/setup.md for the parameterized version of query C.
+//
+// For the sample docs, $GAME_ID is: 2026-09-20-BOS-NYK
+//
+// Three queries. A and B are the diagnostic halves -- run them when you want
+// to see one side in isolation. C is the one the demo actually leans on: it
+// joins both sides in a single result row set, including the home-court
+// bonus, which A cannot apply because it has no game context.
+//
+// None of these produce a final probability. ES|QL has no exp(), so the
+// raw_score pair -> probability conversion happens in the agent's reasoning
+// step. Run scripts/reference_model.py for the expected output.
+
+// ---------------------------------------------------------------------
+// A) Stats side only -- both teams' raw_score, no home-court bonus.
+// ---------------------------------------------------------------------
 
 FROM nba_team_stats
-| WHERE team IN ("$HOME_TEAM", "$AWAY_TEAM")
-| EVAL last_10_win_pct = TO_DOUBLE(last_10_wins) / (TO_DOUBLE(last_10_wins) + TO_DOUBLE(last_10_losses))
-| EVAL raw_score = (net_rating * 0.5) + (last_10_win_pct * 30)
-| KEEP team, raw_score
+| WHERE team IN ("Boston Celtics", "New York Knicks")
+| EVAL last_10_games = last_10_wins + last_10_losses
+| EVAL last_10_win_pct = CASE(
+    last_10_games == 0,
+    0.5,
+    TO_DOUBLE(last_10_wins) / TO_DOUBLE(last_10_games)
+  )
+| EVAL raw_score = ROUND((net_rating * 0.5) + (last_10_win_pct * 30), 2)
+| KEEP team, net_rating, last_10_win_pct, raw_score
+| SORT raw_score DESC
 
-// then, separately:
+// ---------------------------------------------------------------------
+// B) Market side only -- the book's implied probabilities for this game.
+//
+//    Sanity check: the two implied_probability values should sum to
+//    slightly MORE than 1.0. That excess is the vig. If they sum to exactly
+//    1.0 the de-vig already happened at ingest; if they sum to 1.04-1.06
+//    it didn't, and the agent has to normalize before comparing. The sample
+//    docs sum to 1.045, so assume normalization is needed.
+// ---------------------------------------------------------------------
 
 FROM nba_odds
-| WHERE game_id == "$GAME_ID"
-| KEEP team, bookmaker, odds_decimal, implied_probability
+| WHERE game_id == "2026-09-20-BOS-NYK"
+| KEEP game_id, date, home_team, away_team, team, bookmaker, odds_decimal, implied_probability
 | SORT team
+
+// ---------------------------------------------------------------------
+// C) Both sides, one row per team, home-court bonus applied.
+//    This is the query worth showing on stage.
+//
+//    LOOKUP JOIN requires nba_team_stats to be in lookup index mode. If this
+//    errors with something about the join target, see the LOOKUP JOIN
+//    section of agent_builder/setup.md -- there's a one-command fix and a
+//    no-join fallback.
+// ---------------------------------------------------------------------
+
+FROM nba_odds
+| WHERE game_id == "2026-09-20-BOS-NYK"
+| LOOKUP JOIN nba_team_stats ON team
+| EVAL last_10_games = last_10_wins + last_10_losses
+| EVAL last_10_win_pct = CASE(
+    last_10_games == 0,
+    0.5,
+    TO_DOUBLE(last_10_wins) / TO_DOUBLE(last_10_games)
+  )
+| EVAL is_home = team == home_team
+| EVAL home_court_bonus = CASE(is_home, 5.0, 0.0)
+| EVAL raw_score = ROUND(
+    (net_rating * 0.5) + (last_10_win_pct * 30) + home_court_bonus, 2
+  )
+// Note: implied_probability comes back RAW (not de-vigged). De-vigging needs
+// a per-game total while still returning one row per team, which is a window
+// function -- ES|QL's STATS collapses rows instead, so doing it here would
+// either lose a row or (if you group BY team) divide each value by itself and
+// return 1.0 for everyone. Both teams' rows are in this result set, so the
+// agent normalizes them in its reasoning step, in the same breath as the
+// softmax. See agent_builder/setup.md.
+| KEEP game_id, team, is_home, net_rating, last_10_wins, last_10_losses, last_10_win_pct, raw_score, bookmaker, odds_decimal, implied_probability
+| SORT raw_score DESC

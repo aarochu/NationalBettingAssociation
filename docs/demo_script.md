@@ -36,6 +36,16 @@ explaining it in plain language.
 > "Watch it call our custom tools in sequence — pulling the stats prediction,
 > pulling the market odds, then reasoning over both to explain the gap."
 
+**Know the right answer before you ask.** On sample data this should come back
+as roughly **Boston 83%, market 61%, delta +22pp**. Run
+`python3 scripts/reference_model.py` right before you go on to confirm.
+
+Two failure modes to catch in the moment:
+- **Boston at ~100%** — the agent dropped the `/10` scale divisor. Don't
+  argue with it on stage; move to Beat 4 and fix the instructions after.
+- **Deltas that aren't mirrors** (e.g. +22 and −19) — it skipped the de-vig
+  step. Minor enough to talk over if you notice it.
+
 ## Beat 3.5 — vector search (15s)
 
 Ask:
@@ -71,3 +81,14 @@ Which games tonight have the biggest gap between the market and the stats model?
 Have `mappings/sample_docs.md` data still indexed as a fallback — the demo
 prompts work identically against sample data, so a live-API hiccup doesn't
 kill the demo.
+
+If Beat 4 errors, `find_value_mismatches` is the likely culprit —
+`LOOKUP JOIN` needs a lookup-mode index. Fall back to asking about a second
+named matchup instead, which only uses the two single-team tools. The fix and
+the no-join fallback tool are in
+[../agent_builder/setup.md](../agent_builder/setup.md).
+
+One silent failure worth guarding against: if you built
+`nba_team_stats_lookup` and Aaron's live data landed after that, the mirror is
+stale and you'll be scoring live odds against sample stats. Re-run the
+`_reindex` at the merge point.
